@@ -66,6 +66,7 @@ class UrbanDataset(Dataset):
     def _wav_to_fbank(self, file_path, label, mixup_path, mixup_label):
         if mixup_path is None:
             waveform, sr = torchaudio.load(file_path)
+            waveform = waveform.mean(dim=0, keepdim=True)
             waveform = waveform - waveform.mean()
 
             if self.roll_mag_aug:
@@ -76,7 +77,9 @@ class UrbanDataset(Dataset):
             label_one_hot[label] = 1.0
         else:
             waveform, sr = torchaudio.load(file_path)
+            waveform = waveform.mean(dim=0, keepdim=True)
             mixup_waveform, _ = torchaudio.load(mixup_path)
+            mixup_waveform = mixup_waveform.mean(dim=0, keepdim=True)
 
             waveform = waveform - waveform.mean()
             mixup_waveform = mixup_waveform - mixup_waveform.mean()
@@ -125,20 +128,22 @@ class UrbanDataset(Dataset):
         p = self.target_length - fbank.shape[0]
         if p > 0:
             # Padding
-            m = torch.nn.zeropad2d((0, 0, 0, p))
+            m = torch.nn.ZeroPad2d((0, 0, 0, p))
             fbank = m(fbank)
         elif p < 0:
             # Cutting
             fbank = fbank[0:self.target_length, :]
 
         # Apply SpecAugment (freqm and timem)
+        fbank = fbank.transpose(0,1).unsqueeze(0)
         if self.freqm != 0:
             freqm = torchaudio.transforms.FrequencyMasking(self.freqm)
             fbank = freqm(fbank)
         if self.timem != 0:
             timem = torchaudio.transforms.TimeMasking(self.timem)
             fbank = timem(fbank)
+        fbank = torch.transpose(fbank.squeeze(), 0, 1)
 
         label_one_hot = torch.FloatTensor(label_one_hot)
-        return fbank, label_one_hot
+        return fbank.unsqueeze(0), label_one_hot
 

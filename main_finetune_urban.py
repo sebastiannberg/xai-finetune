@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
-from timm.models.layers import to_2tuple
+from timm.models.layers import to_2tuple, trunc_normal_
 
 from dataset_urban import UrbanDataset
 import models_vit as models_vit
@@ -108,6 +108,46 @@ def main():
     checkpoint = torch.load(args.checkpoint, map_location='cpu')
     checkpoint_model = checkpoint['model']
     state_dict = model.state_dict()
+
+    # Check if positional embeddings need to be interpolated
+    if 'pos_embed' in checkpoint_model:
+        if checkpoint_model['pos_embed'].shape != model.pos_embed.shape:
+            print("Interpolating positional embeddings from", checkpoint_model['pos_embed'].shape,
+                  "to", model.pos_embed.shape)
+            pos_embed_checkpoint = checkpoint_model['pos_embed']  # [1, old_num_tokens, embed_dim]
+            cls_token = pos_embed_checkpoint[:, :1, :]            # [1, 1, embed_dim]
+            pos_tokens = pos_embed_checkpoint[:, 1:, :]             # [1, old_num_tokens-1, embed_dim]
+
+            # Determine the original grid shape
+            num_tokens_pretrained = pos_tokens.shape[1]
+            if num_tokens_pretrained == 512:
+                grid_shape_pretrained = (8, 64)  # Known grid shape from pretraining
+            else:
+                grid_size = int(np.sqrt(num_tokens_pretrained))
+                grid_shape_pretrained = (grid_size, grid_size)
+
+            # Reshape from (1, num_tokens, embed_dim) -> (1, grid_height, grid_width, embed_dim)
+            pos_tokens = pos_tokens.reshape(1, grid_shape_pretrained[0], grid_shape_pretrained[1], -1)
+            # Permute to (1, embed_dim, grid_height, grid_width) for interpolation
+            pos_tokens = pos_tokens.permute(0, 3, 1, 2)
+
+            # New grid size from your custom patch embedding (e.g., (32, 8) in your case)
+            new_grid_size = model.patch_embed.patch_hw
+
+            # Interpolate using bilinear interpolation
+            pos_tokens = torch.nn.functional.interpolate(
+                pos_tokens,
+                size=new_grid_size,
+                mode='bilinear',
+                align_corners=False
+            )
+            # Permute back and reshape to (1, new_num_tokens, embed_dim)
+            pos_tokens = pos_tokens.permute(0, 2, 3, 1).reshape(1, -1, pos_embed_checkpoint.shape[-1])
+
+            # Concatenate the class token back
+            new_pos_embed = torch.cat((cls_token, pos_tokens), dim=1)
+            checkpoint_model['pos_embed'] = new_pos_embed
+
     # Remove the classification head weights if they don't match the current model's output shape
     # This prevents shape mismatch issues when fine-tuning on a different number of classes
     for k in ['head.weight', 'head.bias']:
@@ -115,7 +155,7 @@ def main():
             print(f"Removing key {k} from pretrained checkpoint due to shape mismatch.")
             del checkpoint_model[k]
     # Load the remaining pre-trained weights into the model
-    # strict=False allows partial loading (ignores missing keys like the removed classifier head)
+    # strict=False allows partial loading (ignores missing keys like the removed head)
     msg = model.load_state_dict(checkpoint_model, strict=False)
     print(msg)
     # Reinitialize the classification head with small random values
@@ -135,7 +175,10 @@ def main():
     start_time = time.time()
     for epoch in range(args.epochs):
         model.train()
-        pass
+
+        for fbank, label in data_loader_train:
+            logits = model(fbank)
+            print(logits)
 
     total_time = time.time() - start_time
     print(f'Total training time: {total_time / 60:.2f} minutes')
