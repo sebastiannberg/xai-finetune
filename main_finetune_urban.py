@@ -42,7 +42,7 @@ def get_args():
     parser.add_argument('--weight_decay', type=float, default=5e-4, help='Weight decay for optimizer')
     parser.add_argument('--num_classes', type=int, default=10, help='Number of target classes')
     parser.add_argument('--target_length', type=int, default=512, help='Number of time frames for fbank')
-    parser.add_argument('--checkpoint', type=str, default='/cluster/projects/uasc/sebastian/xai-audio/src/models/AudioMAE/ckpt/pretrained.pth', help='Path to the pretrained model checkpoint')
+    parser.add_argument('--checkpoint', type=str, default='/cluster/projects/uasc/sebastian/xai-finetune/ckpt/pretrained.pth', help='Path to the pretrained model checkpoint')
     return parser.parse_args()
 
 def main():
@@ -55,7 +55,7 @@ def main():
     np.random.seed(0)
 
     dataset_train = UrbanDataset(
-        root='/cluster/projects/uasc/sebastian/xai-audio/data/UrbanSound8K',
+        root='/cluster/projects/uasc/sebastian/xai-finetune/data/UrbanSound8K',
         fold=[1, 2, 3, 4, 5, 6, 7, 8, 9],
         mixup_prob=0.5,
         roll_mag_aug=True,
@@ -65,7 +65,7 @@ def main():
         num_classes=args.num_classes
     )
     dataset_val = UrbanDataset(
-        root='/cluster/projects/uasc/sebastian/xai-audio/data/UrbanSound8K',
+        root='/cluster/projects/uasc/sebastian/xai-finetune/data/UrbanSound8K',
         fold=[10],
         mixup_prob=0.0,
         roll_mag_aug=False,
@@ -143,7 +143,3 @@ def main():
 if __name__ == '__main__':
     main()
 
-"""
---log_dir /checkpoint/berniehuang/mae/as_exp/$SLURM_JOB_ID \
---output_dir /checkpoint/berniehuang/mae/as_exp/$SLURM_JOB_ID \
-"""
