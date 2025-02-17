@@ -6,6 +6,8 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from timm.models.layers import to_2tuple, trunc_normal_
+from tqdm import tqdm
+from sklearn.metrics import accuracy_score, f1_score
 
 from dataset_urban import UrbanDataset
 import models_vit as models_vit
@@ -171,14 +173,61 @@ def main():
 
     criterion = nn.BCEWithLogitsLoss()
 
-    print(f'Start training for {args.epochs} epochs')
     start_time = time.time()
     for epoch in range(args.epochs):
         model.train()
+        total_train_loss = 0.0
 
-        for fbank, label in data_loader_train:
+        train_pbar = tqdm(data_loader_train, desc=f"Epoch [{epoch+1}/{args.epochs}] (Training)", leave=False)
+        for fbank, label in train_pbar:
+            fbank = fbank.to(device)
+            label = label.to(device)
+
             logits = model(fbank)
-            print(logits)
+            loss = criterion(logits, label)
+
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+            total_train_loss += loss.item()
+
+        avg_train_loss = total_train_loss / len(data_loader_train.dataset)
+
+        model.eval()
+        total_val_loss = 0.0
+        all_preds = []
+        all_labels = []
+
+        with torch.no_grad():
+            for fbank_val, label_val in data_loader_val:
+                fbank_val = fbank_val.to(device)
+                label_val = label_val.to(device)
+
+                logits_val = model(fbank_val)
+                loss_val = criterion(logits_val, label_val)
+                total_val_loss += loss_val.item()
+
+                preds = torch.argmax(logits_val, dim=1)
+                true_classes = torch.argmax(label_val, dim=1)
+
+                all_preds.append(preds.cpu())
+                all_labels.append(true_classes.cpu())
+
+        avg_val_loss = total_val_loss / len(data_loader_val.dataset)
+
+        all_preds = torch.cat(all_preds).numpy()
+        all_labels = torch.cat(all_labels).numpy()
+
+        val_accuracy = accuracy_score(all_labels, all_preds)
+        val_f1 = f1_score(all_labels, all_preds, average='macro')
+
+        print(f"Epoch [{epoch+1}/{args.epochs}]")
+        print(f"  Train Loss:    {avg_train_loss:.4f}")
+        print(f"  Val Loss:      {avg_val_loss:.4f}")
+        print(f"  Val Accuracy:  {val_accuracy:.4f}")
+        print(f"  Val F1:        {val_f1:.4f}")
+        print("-"*40)
 
     total_time = time.time() - start_time
     print(f'Total training time: {total_time / 60:.2f} minutes')
