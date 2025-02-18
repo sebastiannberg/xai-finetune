@@ -12,6 +12,7 @@ import logging
 import sys
 import os
 import datetime
+import random
 
 from dataset_urban import UrbanDataset
 import models_vit as models_vit
@@ -53,7 +54,7 @@ class PatchEmbed_new(nn.Module):
 
 def get_args():
     parser = argparse.ArgumentParser(description='Finetune on UrbanSound8K dataset')
-    parser.add_argument('--epochs', type=int, default=10, help='Number of training epochs')
+    parser.add_argument('--epochs', type=int, default=60, help='Number of training epochs')
     parser.add_argument('--lr', type=float, default=1e-4, help='Learning rate')
     parser.add_argument('--weight_decay', type=float, default=5e-4, help='Weight decay for optimizer')
     parser.add_argument('--num_classes', type=int, default=10, help='Number of target classes')
@@ -68,7 +69,9 @@ def main():
 
     # Fix the seed for reproducibility
     torch.manual_seed(0)
+    torch.cuda.manual_seed_all(0)
     np.random.seed(0)
+    random.seed(0)
 
     dataset_train = UrbanDataset(
         root='/cluster/projects/uasc/sebastian/xai-finetune/data/UrbanSound8K',
@@ -192,6 +195,7 @@ def main():
     best_model_path = None
     for epoch in range(args.epochs):
         model.train()
+
         total_train_loss = 0.0
 
         train_pbar = tqdm(data_loader_train, desc=f"Epoch [{epoch+1}/{args.epochs}] (Training)", leave=False)
