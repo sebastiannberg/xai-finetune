@@ -8,10 +8,22 @@ from torch.utils.data import DataLoader
 from timm.models.layers import to_2tuple, trunc_normal_
 from tqdm import tqdm
 from sklearn.metrics import accuracy_score, f1_score
+import logging
+import sys
 
 from dataset_urban import UrbanDataset
 import models_vit as models_vit
 
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(message)s',
+    handlers=[
+        logging.FileHandler('/cluster/projects/uasc/sebastian/xai-finetune/logs/finetune.log', mode='a'),
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+print = logging.info
 
 class PatchEmbed_new(nn.Module):
 
