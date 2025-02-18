@@ -10,7 +10,6 @@ from tqdm import tqdm
 from sklearn.metrics import accuracy_score, f1_score
 import logging
 import sys
-import os
 import datetime
 import random
 
@@ -18,9 +17,11 @@ from dataset_urban import UrbanDataset
 import models_vit as models_vit
 
 
+# Setup logger
 logging.basicConfig(
     level=logging.INFO,
-    format='%(message)s',
+    format='%(asctime)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M',
     handlers=[
         logging.FileHandler('/cluster/projects/uasc/sebastian/xai-finetune/logs/finetune.log', mode='a'),
         logging.StreamHandler(sys.stdout)
@@ -60,6 +61,9 @@ def get_args():
     parser.add_argument('--num_classes', type=int, default=10, help='Number of target classes')
     parser.add_argument('--target_length', type=int, default=512, help='Number of time frames for fbank')
     parser.add_argument('--checkpoint', type=str, default='/cluster/projects/uasc/sebastian/xai-finetune/ckpt/pretrained.pth', help='Path to the pretrained model checkpoint')
+    parser.add_argument('--batch_size', type=int, default=8, help='Batch size for training and validation')
+    parser.add_argument('--num_workers', type=int, default=8, help='Number of worker threads for data loading')
+    parser.add_argument('--seed', type=int, default=0, help='To control the random seed for reproducibility')
     return parser.parse_args()
 
 def main():
@@ -68,10 +72,20 @@ def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     # Fix the seed for reproducibility
-    torch.manual_seed(0)
-    torch.cuda.manual_seed_all(0)
-    np.random.seed(0)
-    random.seed(0)
+    torch.manual_seed(args.seed)
+    torch.cuda.manual_seed_all(args.seed)
+    np.random.seed(args.seed)
+    random.seed(args.seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
+    def seed_worker(worker_id):
+        worker_seed = torch.initial_seed() % 2**32
+        np.random.seed(worker_seed)
+        random.seed(worker_seed)
+
+    g = torch.Generator()
+    g.manual_seed(args.seed)
 
     dataset_train = UrbanDataset(
         root='/cluster/projects/uasc/sebastian/xai-finetune/data/UrbanSound8K',
@@ -95,15 +109,19 @@ def main():
     )
     data_loader_train = DataLoader(
         dataset_train,
-        batch_size=8,
-        num_workers=8,
-        drop_last=True
+        batch_size=args.batch_size,
+        num_workers=args.num_workers,
+        drop_last=True,
+        worker_init_fn=seed_worker,
+        generator=g
     )
     data_loader_val = DataLoader(
         dataset_val,
-        batch_size=8,
-        num_workers=8,
-        drop_last=False
+        batch_size=args.batch_size,
+        num_workers=args.num_workers,
+        drop_last=False,
+        worker_init_fn=seed_worker,
+        generator=g
     )
 
     model = models_vit.__dict__['vit_base_patch16'](
@@ -191,8 +209,6 @@ def main():
     criterion = nn.BCEWithLogitsLoss()
 
     start_time = time.time()
-    best_val_loss = float('inf')
-    best_model_path = None
     for epoch in range(args.epochs):
         model.train()
 
@@ -249,22 +265,19 @@ def main():
         print(f"  Val F1:        {val_f1:.4f}")
         print("-"*40)
 
-        if avg_val_loss < best_val_loss:
-            best_val_loss = avg_val_loss
+        if (epoch + 1) % 10 == 0:
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            new_best_model_path = f'/cluster/projects/uasc/sebastian/xai-finetune/ckpt/best_model_{timestamp}.pth'
+            model_path = f'/cluster/projects/uasc/sebastian/xai-finetune/ckpt/epoch_{epoch+1}_{timestamp}.pth'
             torch.save({
                 'epoch': epoch + 1,
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
-                'val_loss': avg_val_loss
-            }, new_best_model_path)
-            print(f'New best model saved: {new_best_model_path}')
-
-            if best_model_path and os.path.exists(best_model_path):
-                os.remove(best_model_path)
-                print(f"Previous best model removed: {best_model_path}")
-            best_model_path = new_best_model_path
+                'val_loss': avg_val_loss,
+                'val_accuracy': val_accuracy,
+                'val_f1': val_f1,
+                'args': vars(args)
+            }, model_path)
+            print(f'Model saved at epoch {epoch+1}: {model_path}')
 
     total_time = time.time() - start_time
     print(f'Total training time: {total_time / 60:.2f} minutes')
