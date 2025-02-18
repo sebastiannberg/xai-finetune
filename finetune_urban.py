@@ -10,6 +10,8 @@ from tqdm import tqdm
 from sklearn.metrics import accuracy_score, f1_score
 import logging
 import sys
+import os
+import datetime
 
 from dataset_urban import UrbanDataset
 import models_vit as models_vit
@@ -186,6 +188,8 @@ def main():
     criterion = nn.BCEWithLogitsLoss()
 
     start_time = time.time()
+    best_val_loss = float('inf')
+    best_model_path = None
     for epoch in range(args.epochs):
         model.train()
         total_train_loss = 0.0
@@ -240,6 +244,23 @@ def main():
         print(f"  Val Accuracy:  {val_accuracy:.4f}")
         print(f"  Val F1:        {val_f1:.4f}")
         print("-"*40)
+
+        if avg_val_loss < best_val_loss:
+            best_val_loss = avg_val_loss
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            new_best_model_path = f'/cluster/projects/uasc/sebastian/xai-finetune/ckpt/best_model_{timestamp}.pth'
+            torch.save({
+                'epoch': epoch + 1,
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'val_loss': avg_val_loss
+            }, new_best_model_path)
+            print(f'New best model saved: {new_best_model_path}')
+
+            if best_model_path and os.path.exists(best_model_path):
+                os.remove(best_model_path)
+                print(f"Previous best model removed: {best_model_path}")
+            best_model_path = new_best_model_path
 
     total_time = time.time() - start_time
     print(f'Total training time: {total_time / 60:.2f} minutes')
