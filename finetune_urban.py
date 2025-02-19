@@ -6,16 +6,24 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from timm.models.layers import to_2tuple, trunc_normal_
-from tqdm import tqdm
 from sklearn.metrics import accuracy_score, f1_score
+from tqdm import tqdm
 import logging
 import sys
 import datetime
 import random
+import os
+from pathlib import Path
 
 from dataset_urban import UrbanDataset
 import models_vit as models_vit
 
+
+# Setup paths
+PROJECT_ROOT = Path(__file__).parent.absolute()
+CKPT_PATH = os.path.join(PROJECT_ROOT, 'ckpt')
+LOGS_PATH = os.path.join(PROJECT_ROOT, 'logs')
+URBAN_PATH = os.path.join(PROJECT_ROOT, 'data', 'UrbanSound8K')
 
 # Setup logger
 logging.basicConfig(
@@ -23,7 +31,7 @@ logging.basicConfig(
     format='%(asctime)s - %(message)s',
     datefmt='%Y-%m-%d %H:%M',
     handlers=[
-        logging.FileHandler('/cluster/projects/uasc/sebastian/xai-finetune/logs/finetune.log', mode='a'),
+        logging.FileHandler(os.path.join(LOGS_PATH, 'finetune.log'), mode='a'),
         logging.StreamHandler(sys.stdout)
     ]
 )
@@ -60,7 +68,7 @@ def get_args():
     parser.add_argument('--weight_decay', type=float, default=5e-4, help='Weight decay for optimizer')
     parser.add_argument('--num_classes', type=int, default=10, help='Number of target classes')
     parser.add_argument('--target_length', type=int, default=512, help='Number of time frames for fbank')
-    parser.add_argument('--checkpoint', type=str, default='/cluster/projects/uasc/sebastian/xai-finetune/ckpt/pretrained.pth', help='Path to the pretrained model checkpoint')
+    parser.add_argument('--checkpoint', type=str, default='pretrained.pth', help='Filename for model checkpoint to load before fine-tuning')
     parser.add_argument('--batch_size', type=int, default=8, help='Batch size for training and validation')
     parser.add_argument('--num_workers', type=int, default=8, help='Number of worker threads for data loading')
     parser.add_argument('--seed', type=int, default=0, help='To control the random seed for reproducibility')
@@ -88,7 +96,7 @@ def main():
     g.manual_seed(args.seed)
 
     dataset_train = UrbanDataset(
-        root='/cluster/projects/uasc/sebastian/xai-finetune/data/UrbanSound8K',
+        root=URBAN_PATH,
         fold=[1, 2, 3, 4, 5, 6, 7, 8, 9],
         mixup_prob=0.5,
         roll_mag_aug=True,
@@ -98,7 +106,7 @@ def main():
         num_classes=args.num_classes
     )
     dataset_val = UrbanDataset(
-        root='/cluster/projects/uasc/sebastian/xai-finetune/data/UrbanSound8K',
+        root=URBAN_PATH,
         fold=[10],
         mixup_prob=0.0,
         roll_mag_aug=False,
@@ -142,7 +150,7 @@ def main():
         torch.zeros(1, model.patch_embed.num_patches + 1, 768),
         requires_grad=False
     )
-    checkpoint = torch.load(args.checkpoint, map_location='cpu')
+    checkpoint = torch.load(os.path.join(CKPT_PATH, args.checkpoint), map_location='cpu')
     checkpoint_model = checkpoint['model']
     state_dict = model.state_dict()
 
@@ -153,7 +161,7 @@ def main():
                   "to", model.pos_embed.shape)
             pos_embed_checkpoint = checkpoint_model['pos_embed']  # [1, old_num_tokens, embed_dim]
             cls_token = pos_embed_checkpoint[:, :1, :]            # [1, 1, embed_dim]
-            pos_tokens = pos_embed_checkpoint[:, 1:, :]             # [1, old_num_tokens-1, embed_dim]
+            pos_tokens = pos_embed_checkpoint[:, 1:, :]           # [1, old_num_tokens-1, embed_dim]
 
             # Determine the original grid shape
             num_tokens_pretrained = pos_tokens.shape[1]
@@ -207,6 +215,8 @@ def main():
     )
 
     criterion = nn.BCEWithLogitsLoss()
+
+    print(f'Device: {device}')
 
     start_time = time.time()
     for epoch in range(args.epochs):
@@ -267,7 +277,7 @@ def main():
 
         if (epoch + 1) % 10 == 0:
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            model_path = f'/cluster/projects/uasc/sebastian/xai-finetune/ckpt/epoch_{epoch+1}_{timestamp}.pth'
+            model_path = os.path.join(CKPT_PATH, f'epoch_{epoch+1}_{timestamp}.pth')
             torch.save({
                 'epoch': epoch + 1,
                 'model_state_dict': model.state_dict(),
