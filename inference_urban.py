@@ -1,13 +1,11 @@
 import argparse
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader
+import torchaudio
 from timm.models.layers import to_2tuple
-from sklearn.metrics import accuracy_score, f1_score
 import os
 from pathlib import Path
 
-from dataset_urban import UrbanDataset
 import models_vit as models_vit
 
 
@@ -41,33 +39,16 @@ class PatchEmbed_new(nn.Module):
 
 def get_args():
     parser = argparse.ArgumentParser(description='Finetune on UrbanSound8K dataset')
-    parser.add_argument('--checkpoint', type=str, default='epoch_40_20250218_222750.pth', help='Filename for model to load for evaluation')
+    parser.add_argument('--checkpoint', type=str, default='epoch_40_20250218_222750.pth', help='Filename for model to load for inference')
     parser.add_argument('--num_classes', type=int, default=10, help='Number of target classes')
     parser.add_argument('--target_length', type=int, default=512, help='Number of time frames for fbank')
-    parser.add_argument('--batch_size', type=int, default=64, help='Batch size for training and validation')
-    parser.add_argument('--num_workers', type=int, default=10, help='Number of worker threads for data loading')
+    parser.add_argument('--files', nargs='+', required=True, help='List of audio file paths for inference')
     return parser.parse_args()
 
 def main():
     args = get_args()
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-    dataset_val = UrbanDataset(
-        root=URBAN_PATH,
-        fold=[10],
-        mixup_prob=0.0,
-        roll_mag_aug=False,
-        target_length=args.target_length,
-        freqm=0,
-        timem=0,
-        num_classes=args.num_classes
-    )
-    data_loader_val = DataLoader(
-        dataset_val,
-        batch_size=args.batch_size,
-        drop_last=False
-    )
 
     model = models_vit.__dict__['vit_base_patch16'](
         num_classes=args.num_classes,
@@ -98,33 +79,71 @@ def main():
     print(msg)
 
     model.to(device)
-
-    print(f'Device: {device}')
+    print(f'Device: {device}\n')
 
     model.eval()
-    all_preds = []
-    all_labels = []
-    with torch.no_grad():
-        for fbank_val, label_val in data_loader_val:
-            fbank_val = fbank_val.to(device)
-            label_val = label_val.to(device)
 
-            logits_val = model(fbank_val)
+    idx_to_class = {
+        0: 'air_conditioner',
+        1: 'car_horn',
+        2: 'children_playing',
+        3: 'dog_bark',
+        4: 'drilling',
+        5: 'engine_idling',
+        6: 'gun_shot',
+        7: 'jackhammer',
+        8: 'siren',
+        9: 'street_music'
+    }
 
-            preds = torch.argmax(logits_val, dim=1)
-            true_classes = torch.argmax(label_val, dim=1)
+    def compute_fbank(audio_file):
+        waveform, sr = torchaudio.load(audio_file)
+        waveform = waveform.mean(dim=0, keepdim=True)
+        waveform = waveform - waveform.mean()
 
-            all_preds.append(preds.cpu())
-            all_labels.append(true_classes.cpu())
+        fbank = torchaudio.compliance.kaldi.fbank(
+            waveform,
+            sample_frequency=sr,
+            use_energy=False,
+            htk_compat=True,
+            window_type='hanning',
+            num_mel_bins=128,
+            frame_shift=10,
+            dither=0.0
+        )
 
-    all_preds = torch.cat(all_preds).numpy()
-    all_labels = torch.cat(all_labels).numpy()
+        # Normalize
+        fbank = (fbank - -3.85) / 3.85
 
-    val_accuracy = accuracy_score(all_labels, all_preds)
-    val_f1 = f1_score(all_labels, all_preds, average='macro')
+        # Pad or truncate fbank to fixed length
+        p = args.target_length - fbank.shape[0]
+        if p > 0:
+            # Padding
+            m = torch.nn.ZeroPad2d((0, 0, 0, p))
+            fbank = m(fbank)
+        elif p < 0:
+            # Cutting
+            fbank = fbank[0:args.target_length, :]
 
-    print(f"Val Accuracy:  {val_accuracy:.4f}")
-    print(f"Val F1:        {val_f1:.4f}")
+        return fbank.unsqueeze(0)
+
+    for audio_file in args.files:
+        fbank = compute_fbank(audio_file)
+        fbank = fbank.unsqueeze(0)
+        fbank = fbank.to(device)
+
+        with torch.no_grad():
+            logits = model(fbank)
+            probs = torch.softmax(logits, dim=-1)
+            print('Probs: ', probs)
+
+        pred_class_id = torch.argmax(probs, dim=1).item()
+        pred_probability = probs[0, pred_class_id].item()
+        pred_label = idx_to_class[pred_class_id]
+
+        print(f"File: {audio_file}")
+        print(f"  Predicted Class: {pred_label} (ID: {pred_class_id})")
+        print(f"  Probability:     {pred_probability:.4f}\n")
 
 if __name__ == '__main__':
     main()
