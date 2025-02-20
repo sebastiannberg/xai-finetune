@@ -4,6 +4,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import DataLoader
 from timm.models.layers import to_2tuple, trunc_normal_
 from sklearn.metrics import accuracy_score, f1_score
@@ -119,6 +120,8 @@ def main():
         dataset_train,
         batch_size=args.batch_size,
         num_workers=args.num_workers,
+        persistent_workers=True,
+        pin_memory=True,
         drop_last=True,
         worker_init_fn=seed_worker,
         generator=g
@@ -127,6 +130,8 @@ def main():
         dataset_val,
         batch_size=args.batch_size,
         num_workers=args.num_workers,
+        persistent_workers=True,
+        pin_memory=True,
         drop_last=False,
         worker_init_fn=seed_worker,
         generator=g
@@ -157,8 +162,7 @@ def main():
     # Check if positional embeddings need to be interpolated
     if 'pos_embed' in checkpoint_model:
         if checkpoint_model['pos_embed'].shape != model.pos_embed.shape:
-            print("Interpolating positional embeddings from", checkpoint_model['pos_embed'].shape,
-                  "to", model.pos_embed.shape)
+            print(f"Interpolating positional embeddings from {checkpoint_model['pos_embed'].shape} to {torch.Size([1, 257, 768])}")
             pos_embed_checkpoint = checkpoint_model['pos_embed']  # [1, old_num_tokens, embed_dim]
             cls_token = pos_embed_checkpoint[:, :1, :]            # [1, 1, embed_dim]
             pos_tokens = pos_embed_checkpoint[:, 1:, :]           # [1, old_num_tokens-1, embed_dim]
@@ -214,6 +218,8 @@ def main():
         weight_decay=args.weight_decay
     )
 
+    scheduler = StepLR(optimizer, step_size=10, gamma=0.1)
+
     criterion = nn.BCEWithLogitsLoss()
 
     print(f'Device: {device}')
@@ -234,7 +240,9 @@ def main():
 
             optimizer.zero_grad()
             loss.backward()
+            torch.cuda.synchronize()
             optimizer.step()
+            torch.cuda.synchronize()
 
             total_train_loss += loss.item()
 
@@ -274,6 +282,8 @@ def main():
         print(f"  Val Accuracy:  {val_accuracy:.4f}")
         print(f"  Val F1:        {val_f1:.4f}")
         print("-"*40)
+
+        scheduler.step()
 
         if (epoch + 1) % 10 == 0:
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
