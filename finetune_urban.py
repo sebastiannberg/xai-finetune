@@ -71,7 +71,7 @@ def get_args():
     parser.add_argument('--target_length', type=int, default=512, help='Number of time frames for fbank')
     parser.add_argument('--checkpoint', type=str, default='pretrained.pth', help='Filename for model checkpoint to load before fine-tuning')
     parser.add_argument('--batch_size', type=int, default=8, help='Batch size for training and validation')
-    parser.add_argument('--num_workers', type=int, default=8, help='Number of worker threads for data loading')
+    parser.add_argument('--num_workers', type=int, default=4, help='Number of worker threads for data loading')
     parser.add_argument('--seed', type=int, default=0, help='To control the random seed for reproducibility')
     return parser.parse_args()
 
@@ -240,9 +240,7 @@ def main():
 
             optimizer.zero_grad()
             loss.backward()
-            torch.cuda.synchronize()
             optimizer.step()
-            torch.cuda.synchronize()
 
             total_train_loss += loss.item()
 
