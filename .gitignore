@@ -3,24 +3,17 @@ __pycache__/
 
 # Environments
 .env
-.venv
-env/
 venv/
 sebastian-venv/
-ENV/
-env.bak/
-venv.bak/
+.ipynb_checkpoints/
 
 # Data
 data/
-*.png
 logs/
+*.png
 
 # AudioMAE specific paths
 ckpt/
-
-# Data files
-*.npy
 
 # Other system-specific or IDE files
 .DS_Store
