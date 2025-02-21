@@ -4,7 +4,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.optim.lr_scheduler import StepLR
+from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader
 from timm.models.layers import to_2tuple, trunc_normal_
 from sklearn.metrics import accuracy_score, f1_score
@@ -218,7 +218,11 @@ def main():
         weight_decay=args.weight_decay
     )
 
-    scheduler = StepLR(optimizer, step_size=10, gamma=0.1)
+    scheduler = CosineAnnealingLR(
+        optimizer,
+        T_max=args.epochs,
+        eta_min=1e-5
+    )
 
     criterion = nn.BCEWithLogitsLoss()
 
@@ -282,6 +286,8 @@ def main():
         print("-"*40)
 
         scheduler.step()
+        current_lr = scheduler.get_last_lr()
+        print(f"Current learning rate after step: {current_lr[0]:.6f}")
 
         if (epoch + 1) % 10 == 0:
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
