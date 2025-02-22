@@ -6,6 +6,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader
+from torch.cuda.amp import autocast, GradScaler
 from timm.models.layers import to_2tuple, trunc_normal_
 from sklearn.metrics import accuracy_score, f1_score
 from tqdm import tqdm
@@ -70,8 +71,8 @@ def get_args():
     parser.add_argument('--num_classes', type=int, default=10, help='Number of target classes')
     parser.add_argument('--target_length', type=int, default=512, help='Number of time frames for fbank')
     parser.add_argument('--checkpoint', type=str, default='pretrained.pth', help='Filename for model checkpoint to load before fine-tuning')
-    parser.add_argument('--batch_size', type=int, default=8, help='Batch size for training and validation')
-    parser.add_argument('--num_workers', type=int, default=4, help='Number of worker threads for data loading')
+    parser.add_argument('--batch_size', type=int, default=32, help='Batch size for training and validation')
+    parser.add_argument('--num_workers', type=int, default=10, help='Number of worker threads for data loading')
     parser.add_argument('--seed', type=int, default=0, help='To control the random seed for reproducibility')
     return parser.parse_args()
 
@@ -85,8 +86,10 @@ def main():
     torch.cuda.manual_seed_all(args.seed)
     np.random.seed(args.seed)
     random.seed(args.seed)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
+
+    # Optimal settings for speed
+    torch.backends.cudnn.deterministic = False
+    torch.backends.cudnn.benchmark = True
 
     def seed_worker(worker_id):
         worker_seed = torch.initial_seed() % 2**32
@@ -226,6 +229,8 @@ def main():
 
     criterion = nn.BCEWithLogitsLoss()
 
+    scaler = GradScaler()
+
     print(f'Device: {device}')
 
     start_time = time.time()
@@ -239,12 +244,15 @@ def main():
             fbank = fbank.to(device)
             label = label.to(device)
 
-            logits = model(fbank)
-            loss = criterion(logits, label)
-
             optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
+
+            with autocast():
+                logits = model(fbank)
+                loss = criterion(logits, label)
+
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
 
             total_train_loss += loss.item()
 
