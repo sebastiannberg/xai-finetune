@@ -91,7 +91,6 @@ def main():
     torch.backends.cudnn.deterministic = False
     torch.backends.cudnn.benchmark = True
 
-    # Fix reproducibility inside workers
     def seed_worker(worker_id):
         worker_seed = torch.initial_seed() % 2**32
         np.random.seed(worker_seed)
@@ -236,6 +235,15 @@ def main():
 
     start_time = time.time()
     for epoch in range(args.epochs):
+
+        if epoch == 0:
+            # Train the model and obtain Attention Weights
+
+            # Use XAI and achieve gradients of Attention Weights for all c in C
+            pass
+        else:
+            pass
+
         model.train()
 
         total_train_loss = 0.0
