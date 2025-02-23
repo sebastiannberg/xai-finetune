@@ -54,7 +54,7 @@ class MyBlock(timm.models.vision_transformer.Block):
         if return_attention:
             # norm -> attention -> residual
             x_norm = self.norm1(x)
-            out, attention = self.attn(x_norm)
+            out, attention = self.attn(x_norm, return_attention)
             x = x + self.drop_path(out)
 
             # mlp -> residual

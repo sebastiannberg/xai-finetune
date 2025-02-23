@@ -236,13 +236,13 @@ def main():
     start_time = time.time()
     for epoch in range(args.epochs):
 
-        if epoch == 0:
-            # Train the model and obtain Attention Weights
-
-            # Use XAI and achieve gradients of Attention Weights for all c in C
-            pass
-        else:
-            pass
+        # if epoch == 0:
+        #     # Train the model and obtain Attention Weights
+        #
+        #     # Use XAI and achieve gradients of Attention Weights for all c in C
+        #     pass
+        # else:
+        #     pass
 
         model.train()
 
@@ -256,7 +256,8 @@ def main():
             optimizer.zero_grad()
 
             with autocast():
-                logits = model(fbank)
+                logits, attention = model(fbank, return_attention=True)
+                print(attention)
                 loss = criterion(logits, label)
 
             scaler.scale(loss).backward()
