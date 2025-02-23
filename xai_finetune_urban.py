@@ -257,7 +257,7 @@ def main():
 
             with autocast():
                 logits, attention = model(fbank, return_attention=True)
-                print(attention)
+                print(attention.size())
                 loss = criterion(logits, label)
 
             scaler.scale(loss).backward()
