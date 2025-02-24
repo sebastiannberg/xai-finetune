@@ -11,7 +11,7 @@ from dataset_urban import UrbanDataset
 import models_vit as models_vit
 
 
-PROJECT_ROOT = Path(__file__).parent.absolute()
+PROJECT_ROOT = Path(__file__).parent.parent.absolute()
 CKPT_PATH = os.path.join(PROJECT_ROOT, 'ckpt')
 URBAN_PATH = os.path.join(PROJECT_ROOT, 'data', 'UrbanSound8K')
 

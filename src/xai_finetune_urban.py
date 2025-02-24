@@ -19,10 +19,10 @@ from pathlib import Path
 
 from dataset_urban import UrbanDataset
 import models_vit as models_vit
-
+from xai import attribute
 
 # Setup paths
-PROJECT_ROOT = Path(__file__).parent.absolute()
+PROJECT_ROOT = Path(__file__).parent.parent.absolute()
 CKPT_PATH = os.path.join(PROJECT_ROOT, 'ckpt')
 LOGS_PATH = os.path.join(PROJECT_ROOT, 'logs')
 URBAN_PATH = os.path.join(PROJECT_ROOT, 'data', 'UrbanSound8K')
@@ -91,7 +91,7 @@ def main():
     torch.backends.cudnn.deterministic = False
     torch.backends.cudnn.benchmark = True
 
-    # Fix reproducibility inside workers
+    # Reproducibility inside workers
     def seed_worker(worker_id):
         worker_seed = torch.initial_seed() % 2**32
         np.random.seed(worker_seed)
@@ -236,81 +236,135 @@ def main():
 
     start_time = time.time()
     for epoch in range(args.epochs):
-        model.train()
+        if epoch == 0:
+            # Training without interpretability loss
+            model.train()
 
-        total_train_loss = 0.0
+            total_train_loss = 0.0
 
-        train_pbar = tqdm(data_loader_train, desc=f"Epoch [{epoch+1}/{args.epochs}] (Training)", leave=False)
-        for fbank, label in train_pbar:
-            fbank = fbank.to(device)
-            label = label.to(device)
+            train_pbar = tqdm(data_loader_train, desc=f"Epoch [{epoch+1}/{args.epochs}] (Training)", leave=False)
+            for fbank, label in train_pbar:
+                fbank = fbank.to(device)
+                label = label.to(device)
 
-            optimizer.zero_grad()
+                optimizer.zero_grad()
 
-            with autocast():
-                logits = model(fbank)
-                loss = criterion(logits, label)
+                with autocast():
+                    logits = model(fbank)
+                    loss = criterion(logits, label)
 
-            scaler.scale(loss).backward()
-            scaler.step(optimizer)
-            scaler.update()
+                scaler.scale(loss).backward()
+                scaler.step(optimizer)
+                scaler.update()
 
-            total_train_loss += loss.item()
+                total_train_loss += loss.item()
 
-        avg_train_loss = total_train_loss / len(data_loader_train.dataset)
+            avg_train_loss = total_train_loss / len(data_loader_train.dataset)
 
-        model.eval()
-        total_val_loss = 0.0
-        all_preds = []
-        all_labels = []
+            # TODO: Obtain attention_gradient here
+            attention_gradient = attribute(model)
 
-        with torch.no_grad():
-            for fbank_val, label_val in data_loader_val:
-                fbank_val = fbank_val.to(device)
-                label_val = label_val.to(device)
+            # Validation
+            model.eval()
+            total_val_loss = 0.0
+            all_preds = []
+            all_labels = []
 
-                logits_val = model(fbank_val)
-                loss_val = criterion(logits_val, label_val)
-                total_val_loss += loss_val.item()
+            with torch.no_grad():
+                for fbank_val, label_val in data_loader_val:
+                    fbank_val = fbank_val.to(device)
+                    label_val = label_val.to(device)
 
-                preds = torch.argmax(logits_val, dim=1)
-                true_classes = torch.argmax(label_val, dim=1)
+                    logits_val = model(fbank_val)
+                    loss_val = criterion(logits_val, label_val)
+                    total_val_loss += loss_val.item()
 
-                all_preds.append(preds.cpu())
-                all_labels.append(true_classes.cpu())
+                    preds = torch.argmax(logits_val, dim=1)
+                    true_classes = torch.argmax(label_val, dim=1)
 
-        avg_val_loss = total_val_loss / len(data_loader_val.dataset)
+                    all_preds.append(preds.cpu())
+                    all_labels.append(true_classes.cpu())
 
-        all_preds = torch.cat(all_preds).numpy()
-        all_labels = torch.cat(all_labels).numpy()
+            avg_val_loss = total_val_loss / len(data_loader_val.dataset)
 
-        val_accuracy = accuracy_score(all_labels, all_preds)
-        val_f1 = f1_score(all_labels, all_preds, average='macro')
+            all_preds = torch.cat(all_preds).numpy()
+            all_labels = torch.cat(all_labels).numpy()
 
-        print(f"Epoch [{epoch+1}/{args.epochs}]")
-        print(f"  Train Loss:    {avg_train_loss:.4f}")
-        print(f"  Val Loss:      {avg_val_loss:.4f}")
-        print(f"  Val Accuracy:  {val_accuracy:.4f}")
-        print(f"  Val F1:        {val_f1:.4f}")
-        print("-"*40)
+            val_accuracy = accuracy_score(all_labels, all_preds)
+            val_f1 = f1_score(all_labels, all_preds, average='macro')
 
-        scheduler.step()
-        current_lr = scheduler.get_last_lr()
-        print(f"Current learning rate after step: {current_lr[0]:.6f}")
+            print(f"Epoch [{epoch+1}/{args.epochs}]")
+            print(f"  Train Loss:    {avg_train_loss:.4f}")
+            print(f"  Val Loss:      {avg_val_loss:.4f}")
+            print(f"  Val Accuracy:  {val_accuracy:.4f}")
+            print(f"  Val F1:        {val_f1:.4f}")
+            print("-"*40)
 
-        if (epoch + 1) % 10 == 0:
-            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            model_path = os.path.join(CKPT_PATH, f'epoch_{epoch+1}_{timestamp}.pth')
-            torch.save({
-                'epoch': epoch + 1,
-                'model_state_dict': model.state_dict(),
-                'optimizer_state_dict': optimizer.state_dict(),
-                'val_loss': avg_val_loss,
-                'val_accuracy': val_accuracy,
-                'val_f1': val_f1,
-                'args': vars(args)
-            }, model_path)
-            print(f'Model saved at epoch {epoch+1}: {model_path}')
+            # Update learning rate
+            scheduler.step()
+            current_lr = scheduler.get_last_lr()
+            print(f"Current learning rate after step: {current_lr[0]:.6f}")
+
+        else:
+            # Training with interpretability loss
+
+            # TODO: Obtain attention_gradient here
+
+            # Validation
+            model.eval()
+            total_val_loss = 0.0
+            all_preds = []
+            all_labels = []
+
+            with torch.no_grad():
+                for fbank_val, label_val in data_loader_val:
+                    fbank_val = fbank_val.to(device)
+                    label_val = label_val.to(device)
+
+                    logits_val = model(fbank_val)
+                    loss_val = criterion(logits_val, label_val)
+                    total_val_loss += loss_val.item()
+
+                    preds = torch.argmax(logits_val, dim=1)
+                    true_classes = torch.argmax(label_val, dim=1)
+
+                    all_preds.append(preds.cpu())
+                    all_labels.append(true_classes.cpu())
+
+            avg_val_loss = total_val_loss / len(data_loader_val.dataset)
+
+            all_preds = torch.cat(all_preds).numpy()
+            all_labels = torch.cat(all_labels).numpy()
+
+            val_accuracy = accuracy_score(all_labels, all_preds)
+            val_f1 = f1_score(all_labels, all_preds, average='macro')
+
+            print(f"Epoch [{epoch+1}/{args.epochs}]")
+            print(f"  Train Loss:    {avg_train_loss:.4f}")
+            print(f"  Val Loss:      {avg_val_loss:.4f}")
+            print(f"  Val Accuracy:  {val_accuracy:.4f}")
+            print(f"  Val F1:        {val_f1:.4f}")
+            print("-"*40)
+
+            # Update learning rate
+            scheduler.step()
+            current_lr = scheduler.get_last_lr()
+            print(f"Current learning rate after step: {current_lr[0]:.6f}")
+
+            # Save model every 10 epochs
+            if (epoch + 1) % 10 == 0:
+                timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                model_path = os.path.join(CKPT_PATH, f'epoch_{epoch+1}_{timestamp}.pth')
+                torch.save({
+                    'epoch': epoch + 1,
+                    'model_state_dict': model.state_dict(),
+                    'optimizer_state_dict': optimizer.state_dict(),
+                    'val_loss': avg_val_loss,
+                    'val_accuracy': val_accuracy,
+                    'val_f1': val_f1,
+                    'args': vars(args)
+                }, model_path)
+                print(f'Model saved at epoch {epoch+1}: {model_path}')
 
     total_time = time.time() - start_time
     print(f'Total training time: {total_time / 60:.2f} minutes')

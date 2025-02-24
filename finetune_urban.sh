@@ -9,4 +9,4 @@
 #SBATCH --time=01:00:00
 
 source venv/bin/activate
-python finetune_urban.py
+python src/finetune_urban.py
