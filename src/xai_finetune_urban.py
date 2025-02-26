@@ -230,6 +230,8 @@ def main():
 
     criterion = nn.BCEWithLogitsLoss()
 
+    interpretability_criterion = nn.KLDivLoss(reduction='batchmean')
+
     scaler = GradScaler()
 
     print(f'Device: {device}')
@@ -262,7 +264,7 @@ def main():
             avg_train_loss = total_train_loss / len(data_loader_train.dataset)
 
             # TODO: Obtain attention_gradient here
-            attention_gradient = attribute(model)
+            attention_gradient = attribute(model, data_loader_train, args.num_classes)
 
             # Validation
             model.eval()
@@ -307,8 +309,40 @@ def main():
 
         else:
             # Training with interpretability loss
+            model.train()
+
+            total_train_loss = 0.0
+
+            train_pbar = tqdm(data_loader_train, desc=f"Epoch [{epoch+1}/{args.epochs}] (Training)", leave=False)
+            for fbank, label in train_pbar:
+                fbank = fbank.to(device)
+                label = label.to(device)
+
+                optimizer.zero_grad()
+
+                with autocast():
+                    logits, attention = model(fbank, return_attention=True)
+                    classification_loss = criterion(logits, label)
+
+                    selected_attention_gradient = attention_gradient[label, :, :, :]
+
+                    attention_interpret = attention * selected_attention_gradient
+                    print(attention_interpret.size())
+
+                    interpretability_loss = interpretability_criterion(attention, attention_interpret)
+
+                    loss = classification_loss + interpretability_loss
+
+                scaler.scale(loss).backward()
+                scaler.step(optimizer)
+                scaler.update()
+
+                total_train_loss += loss.item()
+
+            avg_train_loss = total_train_loss / len(data_loader_train.dataset)
 
             # TODO: Obtain attention_gradient here
+            raise ValueError()
 
             # Validation
             model.eval()
