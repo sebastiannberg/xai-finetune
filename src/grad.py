@@ -1,4 +1,5 @@
 import torch
+from tqdm import tqdm
 
 
 def _run_forward(model, inputs: torch.Tensor, target: int):
@@ -36,7 +37,6 @@ def _compute_gradients(model, inputs, target_idx):
 
         # Result shape: (batch_size, num_blocks, num_heads, seq_len, seq_len)
         stacked_grads = torch.stack(all_grads, dim=1)
-        print(stacked_grads.size())
 
         model.zero_grad()
 
@@ -52,16 +52,29 @@ def attribute(model: torch.nn.Module, data_loader_interpret: torch.utils.data.Da
 
     device = next(model.parameters()).device
 
-    class_grads = []
+    class_grads = {}
 
     for class_idx in range(num_classes):
         accum_grad = None
         count_samples = 0
 
-        for fbank, _ in data_loader_interpret:
+        interpret_pbar = tqdm(data_loader_interpret, desc=f"class_idx [{class_idx}/{num_classes-1}] (Gradients)", leave=False)
+        for fbank, _ in interpret_pbar:
             fbank = fbank.to(device)
 
             grads = _compute_gradients(model, fbank, class_idx)
 
-    return grads
+            grads_batch_sum = grads.sum(dim=0)
 
+            if accum_grad is not None:
+                accum_grad += grads_batch_sum
+            else:
+                accum_grad = grads_batch_sum
+
+            count_samples += grads.size(0)
+
+        avg_grad = accum_grad / count_samples
+
+        class_grads[class_idx] = avg_grad
+
+    return class_grads

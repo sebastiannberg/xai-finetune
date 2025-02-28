@@ -64,7 +64,7 @@ class PatchEmbed_new(nn.Module):
         return x
 
 def get_args():
-    parser = argparse.ArgumentParser(description='Finetune on UrbanSound8K dataset')
+    parser = argparse.ArgumentParser(description='Finetune with XAI on UrbanSound8K dataset')
     parser.add_argument('--epochs', type=int, default=60, help='Number of training epochs')
     parser.add_argument('--lr', type=float, default=1e-4, help='Learning rate')
     parser.add_argument('--weight_decay', type=float, default=5e-4, help='Weight decay for optimizer')
@@ -74,6 +74,7 @@ def get_args():
     parser.add_argument('--batch_size', type=int, default=32, help='Batch size for training and validation')
     parser.add_argument('--num_workers', type=int, default=10, help='Number of worker threads for data loading')
     parser.add_argument('--seed', type=int, default=0, help='To control the random seed for reproducibility')
+    parser.add_argument('--alpha', type=float, default=0.95, help='The strength of classification loss vs interpret loss')
     return parser.parse_args()
 
 def main():
@@ -112,7 +113,7 @@ def main():
     )
     dataset_interpret = UrbanDataset(
         root=URBAN_PATH,
-        fold=[1, 2, 3, 4, 5, 6, 7, 8, 9],
+        fold=[1], # TODO: Try all training folds
         mixup_prob=0.0,
         roll_mag_aug=False,
         target_length=args.target_length,
@@ -280,8 +281,8 @@ def main():
 
             avg_train_loss = total_train_loss / len(data_loader_train.dataset)
 
-            # TODO: Obtain attention_gradient here
-            attention_grad = attribute(model, data_loader_interpret, args.num_classes)
+            # Calculate attention gradients
+            class_attention_grads = attribute(model, data_loader_interpret, args.num_classes)
 
             # Validation
             model.eval()
@@ -341,14 +342,24 @@ def main():
                     logits, attention = model(fbank, return_attention=True)
                     classification_loss = criterion(logits, label)
 
-                    selected_attention_gradient = attention_gradient[label, :, :, :]
+                    # TODO: select attention gradients based on class_idx class_attention_grads is a dict
+                    class_idx = torch.argmax(label, dim=1)
+
+                    selected_grads_list = []
+                    for i in range(args.batch_size):
+                        c = class_idx[i].item()
+                        # Retrieve the average gradient for class c, which has shape = (n_blocks, n_heads, seq, seq)
+                        grad_for_class = class_attention_grads[c].to(device)
+                        # Insert a new batch dimension
+                        selected_grads_list.append(grad_for_class.unsqueeze(0))
+
+                    selected_attention_gradient = torch.cat(selected_grads_list, dim=0)
 
                     attention_interpret = attention * selected_attention_gradient
-                    print(attention_interpret.size())
 
-                    interpretability_loss = interpretability_criterion(attention, attention_interpret)
+                    interpretability_loss = interpretability_criterion(torch.log(attention.clamp_min(1e-8)), torch.softmax(attention_interpret, dim=-1))
 
-                    loss = classification_loss + interpretability_loss
+                    loss = (args.alpha * classification_loss) + ((1 - args.alpha) * interpretability_loss)
 
                 scaler.scale(loss).backward()
                 scaler.step(optimizer)
@@ -358,8 +369,8 @@ def main():
 
             avg_train_loss = total_train_loss / len(data_loader_train.dataset)
 
-            # TODO: Obtain attention_gradient here
-            raise ValueError()
+            # Calculate attention gradients
+            class_attention_grads = attribute(model, data_loader_interpret, args.num_classes)
 
             # Validation
             model.eval()
