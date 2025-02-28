@@ -93,8 +93,7 @@ def main():
     data_loader_interpret = DataLoader(
         dataset_interpret,
         batch_size=args.batch_size,
-        num_workers=args.num_workers,
-        persistent_workers=True,
+        num_workers=2,
         pin_memory=True,
         drop_last=True,
         worker_init_fn=seed_worker,

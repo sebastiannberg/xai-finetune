@@ -57,5 +57,5 @@ def attribute(model: torch.nn.Module, data_loader_interpret: torch.utils.data.Da
 
             grads = _compute_gradients(model, fbank, class_idx)
 
-#     print("Final Attention Gradient Shape:", total_attention_gradient.size(), "\n")
-#     return total_attention_gradient  # Shape: (num_classes, blocks, heads, emb, emb)
+    return grads
+
