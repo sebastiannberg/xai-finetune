@@ -90,8 +90,6 @@ def main():
         timem=0,
         num_classes=args.num_classes
     )
-    print("Dataset length:", len(dataset_interpret))
-    print(dataset_interpret[0])
     data_loader_interpret = DataLoader(
         dataset_interpret,
         batch_size=args.batch_size,
@@ -181,10 +179,6 @@ def main():
     print(f'Device: {device}')
 
     start_time = time.time()
-
-    for i, (fbank, label) in enumerate(data_loader_interpret):
-        print(f"Got batch {i}: fbank shape {fbank.shape}")
-        break
 
     attention_grad = attribute(model, data_loader_interpret, args.num_classes)
 

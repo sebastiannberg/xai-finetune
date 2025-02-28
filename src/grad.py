@@ -2,43 +2,49 @@ import torch
 
 
 def _run_forward(model, inputs: torch.Tensor, target: int):
-    print("inside run forward func")
     output = model(inputs)
-    print("after model(inputs)")
     # shape = (batch_size,) after slice out output[:, target]
     return output[:, target]
 
 def _compute_gradients(model, inputs, target_idx):
-    print("inside compute grads func before the with")
+    model.zero_grad()
+
     with torch.autograd.set_grad_enabled(True):
-        print("before run forward func")
         output = _run_forward(model, inputs, target_idx)
-        print("before output.sum()")
         scalar_output = output.sum()
-        print("after output.sum()")
 
-        first_block = model.blocks[0]
-        print("first_block", first_block)
-        torch.autograd.grad(scalar_output, first_block.attn.attn)
-        print("print after autograd.grad")
+        scalar_output.backward()
 
+        all_grads = []
         for block in model.blocks:
-            print("for block")
-            grads = block.attn.attn.grad
-            print(grads.size()) # (batch, head, seq, seq)
-        print()
+            if hasattr(block.attn, 'attn') and block.attn.attn.grad is not None:
+                all_grads.append(block.attn.attn.grad.detach().clone())
+            else:
+                print(f"Warning: No gradients for block {block}")
+                # Add a placeholder of zeros with the same shape
+                if len(all_grads) > 0:
+                    all_grads.append(torch.zeros_like(all_grads[0]))
+                else:
+                    print("No valid gradients found in any block")
+                    return None
 
-    return grads
+        # Result shape: (batch_size, num_blocks, num_heads, seq_len, seq_len)
+        stacked_grads = torch.stack(all_grads, dim=1)
+        print(stacked_grads.size())
+
+        model.zero_grad()
+
+    return stacked_grads
 
 def attribute(model: torch.nn.Module, data_loader_interpret: torch.utils.data.DataLoader, num_classes: int):
     """
     Loop over each class index, compute the attention gradients for every
     batch in data_loader_interpret, and accumulate/average them.
     """
+    # Freeze dropout and batch norm with model.eval()
     model.eval()
-    print("model.eval")
+
     device = next(model.parameters()).device
-    print("device")
 
     class_grads = []
 
@@ -46,14 +52,10 @@ def attribute(model: torch.nn.Module, data_loader_interpret: torch.utils.data.Da
         accum_grad = None
         count_samples = 0
 
-        print("class idx", class_idx)
         for fbank, _ in data_loader_interpret:
-            print("in for fbank loop")
             fbank = fbank.to(device)
-            print("after fbank to device")
 
             grads = _compute_gradients(model, fbank, class_idx)
-
 
 #     print("Final Attention Gradient Shape:", total_attention_gradient.size(), "\n")
 #     return total_attention_gradient  # Shape: (num_classes, blocks, heads, emb, emb)
