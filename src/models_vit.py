@@ -25,6 +25,8 @@ class MyAttention(timm.models.vision_transformer.Attention):
 
         attn = (q @ k.transpose(-2, -1)) * self.scale
         attn = attn.softmax(dim=-1)
+        attn.retain_grad()
+        self.attn = attn
 
         attn_dropped = self.attn_drop(attn)
 
@@ -138,7 +140,7 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
             outcome = x[:, 0]
 
         if return_attention:
-            # stack into a single tensor of shape [B, #blocks, num_heads, seq_len, seq_len]
+            # stack into a single tensor of shape [B, blocks, num_heads, seq_len, seq_len]
             # (assuming all attn maps have the same shape)
             attn_tensor = torch.stack(attn_list, dim=1)
             return outcome, attn_tensor

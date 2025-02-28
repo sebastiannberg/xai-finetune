@@ -110,6 +110,16 @@ def main():
         timem=192,
         num_classes=args.num_classes
     )
+    dataset_interpret = UrbanDataset(
+        root=URBAN_PATH,
+        fold=[1, 2, 3, 4, 5, 6, 7, 8, 9],
+        mixup_prob=0.0,
+        roll_mag_aug=False,
+        target_length=args.target_length,
+        freqm=0,
+        timem=0,
+        num_classes=args.num_classes
+    )
     dataset_val = UrbanDataset(
         root=URBAN_PATH,
         fold=[10],
@@ -122,6 +132,16 @@ def main():
     )
     data_loader_train = DataLoader(
         dataset_train,
+        batch_size=args.batch_size,
+        num_workers=args.num_workers,
+        persistent_workers=True,
+        pin_memory=True,
+        drop_last=True,
+        worker_init_fn=seed_worker,
+        generator=g
+    )
+    data_loader_interpret = DataLoader(
+        dataset_interpret,
         batch_size=args.batch_size,
         num_workers=args.num_workers,
         persistent_workers=True,
@@ -264,7 +284,7 @@ def main():
             avg_train_loss = total_train_loss / len(data_loader_train.dataset)
 
             # TODO: Obtain attention_gradient here
-            attention_gradient = attribute(model, data_loader_train, args.num_classes)
+            attention_grad = attribute(model, data_loader_interpret, args.num_classes)
 
             # Validation
             model.eval()

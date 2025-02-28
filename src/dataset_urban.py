@@ -34,6 +34,7 @@ class UrbanDataset(Dataset):
 
     def __getitem__(self, idx):
         file_path = self.file_paths[idx]
+        print(f"Attempting to load file {idx}: {file_path}", flush=True)
         label = self.labels[idx]
 
         if random.random() < self.mixup_prob:
@@ -76,7 +77,9 @@ class UrbanDataset(Dataset):
             label_one_hot = np.zeros(self.num_classes)
             label_one_hot[label] = 1.0
         else:
+            print("Before torchaudio.load", flush=True)
             waveform, sr = torchaudio.load(file_path)
+            print("After torchaudio.load", flush=True)
             waveform = waveform.mean(dim=0, keepdim=True)
             mixup_waveform, _ = torchaudio.load(mixup_path)
             mixup_waveform = mixup_waveform.mean(dim=0, keepdim=True)
