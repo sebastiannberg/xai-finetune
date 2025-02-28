@@ -19,7 +19,7 @@ from pathlib import Path
 
 from dataset_urban import UrbanDataset
 import models_vit as models_vit
-from xai import attribute
+from grad import attribute
 
 # Setup paths
 PROJECT_ROOT = Path(__file__).parent.parent.absolute()
