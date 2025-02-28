@@ -25,7 +25,6 @@ class MyAttention(timm.models.vision_transformer.Attention):
 
         attn = (q @ k.transpose(-2, -1)) * self.scale
         attn = attn.softmax(dim=-1)
-        attn.retain_grad()
         self.attn = attn
 
         attn_dropped = self.attn_drop(attn)

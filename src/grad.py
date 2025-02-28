@@ -11,6 +11,12 @@ def _compute_gradients(model, inputs, target_idx):
 
     with torch.autograd.set_grad_enabled(True):
         output = _run_forward(model, inputs, target_idx)
+
+        for block in model.blocks:
+            if hasattr(block.attn, 'attn') and block.attn.attn is not None:
+                if block.attn.attn.requires_grad:
+                    block.attn.attn.retain_grad()
+
         scalar_output = output.sum()
 
         scalar_output.backward()
