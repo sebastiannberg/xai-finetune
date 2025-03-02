@@ -5,11 +5,12 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.optim.lr_scheduler import CosineAnnealingLR
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
 from torch.cuda.amp import autocast, GradScaler
 from timm.models.layers import to_2tuple, trunc_normal_
 from sklearn.metrics import accuracy_score, f1_score
 from tqdm import tqdm
+from collections import defaultdict
 import logging
 import sys
 import datetime
@@ -111,16 +112,6 @@ def main():
         timem=192,
         num_classes=args.num_classes
     )
-    dataset_interpret = UrbanDataset(
-        root=URBAN_PATH,
-        fold=[1], # TODO: Try all training folds
-        mixup_prob=0.0,
-        roll_mag_aug=False,
-        target_length=args.target_length,
-        freqm=0,
-        timem=0,
-        num_classes=args.num_classes
-    )
     dataset_val = UrbanDataset(
         root=URBAN_PATH,
         fold=[10],
@@ -140,15 +131,6 @@ def main():
         worker_init_fn=seed_worker,
         generator=g
     )
-    data_loader_interpret = DataLoader(
-        dataset_interpret,
-        batch_size=args.batch_size,
-        num_workers=args.num_workers,
-        pin_memory=True,
-        drop_last=True,
-        worker_init_fn=seed_worker,
-        generator=g
-    )
     data_loader_val = DataLoader(
         dataset_val,
         batch_size=args.batch_size,
@@ -158,6 +140,37 @@ def main():
         worker_init_fn=seed_worker,
         generator=g
     )
+
+    # Partition data to samples for each label
+    dataset_interpret = UrbanDataset(
+        root=URBAN_PATH,
+        fold=[1], # TODO: Try all training folds
+        mixup_prob=0.0,
+        roll_mag_aug=False,
+        target_length=args.target_length,
+        freqm=0,
+        timem=0,
+        num_classes=args.num_classes
+    )
+    class_to_indices = defaultdict(list)
+    for idx in range(len(dataset_interpret)):
+        _, data_y = dataset_interpret[idx]
+        class_idx = data_y.argmax().item()
+        class_to_indices[class_idx].append(idx)
+    class_loaders = []
+    for class_idx in range(args.num_classes):
+        indices = class_to_indices[class_idx]
+        subset = Subset(dataset_interpret, indices)
+        loader = DataLoader(
+            subset,
+            batch_size=args.batch_size,
+            num_workers=args.num_workers,
+            pin_memory=True,
+            drop_last=False,
+            worker_init_fn=seed_worker,
+            generator=g
+        )
+        class_loaders.append(loader)
 
     model = models_vit.__dict__['vit_base_patch16'](
         num_classes=args.num_classes,
@@ -282,7 +295,7 @@ def main():
             avg_train_loss = total_train_loss / len(data_loader_train.dataset)
 
             # Calculate attention gradients
-            class_attention_grads = attribute(model, data_loader_interpret, args.num_classes)
+            class_attention_grads = attribute(model, class_loaders)
 
             # Validation
             model.eval()
