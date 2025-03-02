@@ -351,20 +351,10 @@ def main():
                     logits, attention = model(fbank, return_attention=True)
                     classification_loss = criterion(logits, label)
 
-                    # TODO: select attention gradients based on class_idx class_attention_grads is a tensor
-                    class_idx = torch.argmax(label, dim=1)
+                    label_indices = torch.argmax(label, dim=1)
+                    selected_attention_grads = class_attention_grads[label_indices, ...]
 
-                    selected_grads_list = []
-                    for i in range(args.batch_size):
-                        c = class_idx[i].item()
-                        # Retrieve the average gradient for class c, which has shape = (n_blocks, n_heads, seq, seq)
-                        grad_for_class = class_attention_grads[c].to(device)
-                        # Insert a new batch dimension
-                        selected_grads_list.append(grad_for_class.unsqueeze(0))
-
-                    selected_attention_gradient = torch.cat(selected_grads_list, dim=0)
-
-                    attention_interpret = attention * selected_attention_gradient
+                    attention_interpret = attention * selected_attention_grads
 
                     interpretability_loss = interpretability_criterion(torch.log(attention.clamp_min(1e-8)), torch.softmax(attention_interpret, dim=-1))
 
