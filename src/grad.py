@@ -1,7 +1,6 @@
 import torch
 import torch.utils.data
 from typing import List
-from tqdm import tqdm
 
 
 def _compute_gradients(model, inputs, class_idx):
@@ -43,7 +42,6 @@ def _compute_gradients(model, inputs, class_idx):
 
         # Result shape: (num_blocks, num_heads, seq_len, seq_len)
         stacked_grads = torch.stack(all_grads, dim=0)
-        print(stacked_grads.size())
 
         model.zero_grad()
 
@@ -55,9 +53,8 @@ def attribute(model: torch.nn.Module, class_loaders: List[torch.utils.data.DataL
 
     device = next(model.parameters()).device
 
+    class_grads = []
     for class_idx, loader in enumerate(class_loaders):
-        print(class_idx)
-        print(len(loader.dataset))
         accum_grads = None
         total_samples = 0
 
@@ -82,5 +79,7 @@ def attribute(model: torch.nn.Module, class_loaders: List[torch.utils.data.DataL
             total_samples += fbank.size(0)
 
         class_grad = accum_grads / float(total_samples)
+        class_grads.append(class_grad)
 
-    return None # Class grads in a tensor (class, block, head, emb, emb)
+    # Return a tensor of (class, block, head, emb, emb)
+    return torch.stack(class_grads, dim=0)
