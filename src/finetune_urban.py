@@ -11,7 +11,6 @@ from timm.models.layers import to_2tuple, trunc_normal_
 from sklearn.metrics import accuracy_score, f1_score
 from tqdm import tqdm
 import logging
-import sys
 import datetime
 import random
 import os
@@ -33,11 +32,10 @@ logging.basicConfig(
     format='%(asctime)s - %(message)s',
     datefmt='%Y-%m-%d %H:%M',
     handlers=[
-        logging.FileHandler(os.path.join(LOGS_PATH, 'finetune.log'), mode='a'),
-        logging.StreamHandler(sys.stdout)
+        logging.FileHandler(os.path.join(LOGS_PATH, 'finetune.log'), mode='a')
     ]
 )
-print = logging.info
+logger = logging.getLogger()
 
 class PatchEmbed_new(nn.Module):
 
@@ -164,7 +162,7 @@ def main():
     # Check if positional embeddings need to be interpolated
     if 'pos_embed' in checkpoint_model:
         if checkpoint_model['pos_embed'].shape != model.pos_embed.shape:
-            print(f"Interpolating positional embeddings from {checkpoint_model['pos_embed'].shape} to {torch.Size([1, 257, 768])}")
+            logger.info(f"Interpolating positional embeddings from {checkpoint_model['pos_embed'].shape} to {torch.Size([1, 257, 768])}")
             pos_embed_checkpoint = checkpoint_model['pos_embed']  # [1, old_num_tokens, embed_dim]
             cls_token = pos_embed_checkpoint[:, :1, :]            # [1, 1, embed_dim]
             pos_tokens = pos_embed_checkpoint[:, 1:, :]           # [1, old_num_tokens-1, embed_dim]
@@ -203,12 +201,12 @@ def main():
     # This prevents shape mismatch issues when fine-tuning on a different number of classes
     for k in ['head.weight', 'head.bias']:
         if k in checkpoint_model and checkpoint_model[k].shape != state_dict[k].shape:
-            print(f"Removing key {k} from pretrained checkpoint due to shape mismatch.")
+            logger.info(f"Removing key {k} from pretrained checkpoint due to shape mismatch.")
             del checkpoint_model[k]
     # Load the remaining pre-trained weights into the model
     # strict=False allows partial loading (ignores missing keys like the removed head)
     msg = model.load_state_dict(checkpoint_model, strict=False)
-    print(msg)
+    logger.info(msg)
     # Reinitialize the classification head with small random values
     # This ensures the new classification layer starts learning from scratch
     trunc_normal_(model.head.weight, std=2e-5)
@@ -230,16 +228,15 @@ def main():
 
     scaler = GradScaler()
 
-    print(f'Device: {device}')
+    logger.info(f'Device: {device}')
 
     start_time = time.time()
-    for epoch in range(args.epochs):
+    for epoch in tqdm(range(args.epochs), desc="Training Progress", leave=True, position=0):
         model.train()
 
         total_train_loss = 0.0
 
-        train_pbar = tqdm(data_loader_train, desc=f"Epoch [{epoch+1}/{args.epochs}] (Training)", leave=False)
-        for fbank, label in train_pbar:
+        for fbank, label in tqdm(data_loader_train, desc=f"Training [Epoch {epoch+1}/{args.epochs}]", leave=False, position=1):
             fbank = fbank.to(device)
             label = label.to(device)
 
@@ -263,7 +260,7 @@ def main():
         all_labels = []
 
         with torch.no_grad():
-            for fbank_val, label_val in data_loader_val:
+            for fbank_val, label_val in tqdm(data_loader_val, desc="Validation", leave=False, position=1):
                 fbank_val = fbank_val.to(device)
                 label_val = label_val.to(device)
 
@@ -285,16 +282,16 @@ def main():
         val_accuracy = accuracy_score(all_labels, all_preds)
         val_f1 = f1_score(all_labels, all_preds, average='macro')
 
-        print(f"Epoch [{epoch+1}/{args.epochs}]")
-        print(f"  Train Loss:    {avg_train_loss:.4f}")
-        print(f"  Val Loss:      {avg_val_loss:.4f}")
-        print(f"  Val Accuracy:  {val_accuracy:.4f}")
-        print(f"  Val F1:        {val_f1:.4f}")
-        print("-"*40)
+        logger.info("-"*40)
+        logger.info(f"Epoch [{epoch+1}/{args.epochs}]")
+        logger.info(f"  Train Loss:    {avg_train_loss:.4f}")
+        logger.info(f"  Val Loss:      {avg_val_loss:.4f}")
+        logger.info(f"  Val Accuracy:  {val_accuracy:.4f}")
+        logger.info(f"  Val F1:        {val_f1:.4f}")
 
         scheduler.step()
         current_lr = scheduler.get_last_lr()
-        print(f"Current learning rate after step: {current_lr[0]:.6f}")
+        logger.info(f"Current learning rate after step: {current_lr[0]:.6f}")
 
         if (epoch + 1) % 10 == 0:
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -308,10 +305,10 @@ def main():
                 'val_f1': val_f1,
                 'args': vars(args)
             }, model_path)
-            print(f'Model saved at epoch {epoch+1}: {model_path}')
+            logger.info(f'Model saved at epoch {epoch+1}: {model_path}')
 
     total_time = time.time() - start_time
-    print(f'Total training time: {total_time / 60:.2f} minutes')
+    logger.info(f'Total training time: {total_time / 60:.2f} minutes')
 
 if __name__ == '__main__':
     main()
