@@ -24,8 +24,10 @@ class MyAttention(timm.models.vision_transformer.Attention):
         q, k, v = qkv[0], qkv[1], qkv[2]   # make torchscript happy (cannot use tensor as tuple)
 
         attn = (q @ k.transpose(-2, -1)) * self.scale
+        self.attn_presoftmax = attn
         attn = attn.softmax(dim=-1)
-        self.attn = attn
+        self.attn_postsoftmax = attn
+        self.attn = attn # save for grad calculations later
 
         attn_dropped = self.attn_drop(attn)
 
@@ -34,7 +36,7 @@ class MyAttention(timm.models.vision_transformer.Attention):
         out = self.proj_drop(out)
 
         if return_attention:
-            return out, attn
+            return out, self.attn
         else:
             return out
 

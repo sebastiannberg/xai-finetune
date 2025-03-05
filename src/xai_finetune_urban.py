@@ -73,7 +73,8 @@ def get_args():
     parser.add_argument('--batch_size', type=int, default=32, help='Batch size for training and validation')
     parser.add_argument('--num_workers', type=int, default=10, help='Number of worker threads for data loading')
     parser.add_argument('--seed', type=int, default=0, help='To control the random seed for reproducibility')
-    parser.add_argument('--alpha', type=float, default=0.95, help='The strength of classification loss vs interpret loss')
+    parser.add_argument('--alpha', type=float, default=0.5, help='The strength of classification loss vs interpret loss')
+    parser.add_argument('--grad_scale', type=float, default=1e3, help='Scaling up gradients to avoid uniform distribution for attention_interpret')
     return parser.parse_args()
 
 def main():
@@ -259,8 +260,6 @@ def main():
 
     criterion = nn.BCEWithLogitsLoss()
 
-    interpretability_criterion = nn.KLDivLoss(reduction='batchmean')
-
     scaler = GradScaler()
 
     logger.info(f'Device: {device}')
@@ -353,12 +352,28 @@ def main():
 
                     label_indices = torch.argmax(label, dim=1)
                     selected_attention_grads = class_attention_grads[label_indices, ...]
+                    # Scale attention grads
+                    selected_attention_grads = args.grad_scale * selected_attention_grads
 
                     attention_interpret = attention * selected_attention_grads
+                    attention_interpret = attention_interpret.softmax(dim=-1)
 
-                    interpretability_loss = interpretability_criterion(torch.log(attention.clamp_min(1e-8)), torch.softmax(attention_interpret, dim=-1))
+                    logger.info(f'attention [0, 0, 0, 0, :] {attention[0, 0, 0, 0, :]}')
+                    logger.info(f'selected_attention_grads [0, 0, 0, 0, :] {selected_attention_grads[0, 0, 0, 0, :]}')
+                    logger.info(f'attention_interpret [0, 0, 0, 0, :] {attention_interpret[0, 0, 0, 0, :]}')
 
-                    loss = (args.alpha * classification_loss) + ((1 - args.alpha) * interpretability_loss)
+                    # attention is already softmaxed on the last dim
+                    # attention_interpret is also softmaxed on the last dim
+                    # Suppose p and q are both probabilities along the last dimension (already softmaxed).
+                    # A one-directional cross entropy can be computed as:
+                    # CE(p || q) = - sum over i of p[i] * log(q[i])
+
+                    cross_ent_loss = -(attention * (attention_interpret + 1e-12).log()).sum(dim=-1).mean()
+
+                    logger.info(f'interpret loss: {cross_ent_loss.item()}')
+                    logger.info(f'classification loss: {classification_loss.item()}')
+
+                    loss = (args.alpha * classification_loss) + ((1 - args.alpha) * cross_ent_loss)
 
                 scaler.scale(loss).backward()
                 scaler.step(optimizer)
