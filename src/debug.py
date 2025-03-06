@@ -149,7 +149,8 @@ def main():
     logger.info(f'fbank.size() {fbank.size()}')
     logger.info(f'label.size() {label.size()}')
 
-    def histogram(tensor, name):
+    def histogram(tensor, name, pre_softmax=False, post_softmax=False):
+        print(f'histogram for {name}')
         if tensor.dim() == 4:
             b, h, s1, s2 = tensor.shape
             # Flatten the last two dimensions -> (batch, head, s1*s2)
@@ -159,12 +160,40 @@ def main():
                 head_data = tensor_flat[:, head, :].flatten().cpu().detach().numpy()
                 plt.figure()
                 plt.hist(head_data, bins=100, alpha=0.7)
-                plt.title(f"{name} - Head {head}")
-                head_file = f"{name}_head{head}.png"
+                if pre_softmax:
+                    title_str = f"Pre-Softmax {name} - Head {head}"
+                    head_file = f"pre_softmax_{name}_head{head}.png"
+                elif post_softmax:
+                    title_str = f"Post-Softmax {name} - Head {head}"
+                    head_file = f"post_softmax_{name}_head{head}.png"
+                else:
+                    title_str = f"{name} - Head {head}"
+                    head_file = f"{name}_head{head}.png"
+                plt.title(title_str)
                 plt.xlabel("Value")
                 plt.ylabel("Frequency")
-                plt.savefig(f'/cluster/projects/uasc/sebastian/xai-finetune/', head_file)
+                plt.savefig(f'/home/sebastian/dev/xai-finetune/img/{head_file}')
                 plt.close()
+
+    def plot_avg_token_attention(tensor, name):
+        print(f'plot average token attention for {name}')
+        attn_np = tensor.detach().cpu().numpy()[0]
+        num_heads, S, _ = attn_np.shape
+
+        plt.figure(figsize=(10, 6))
+        for head in range(num_heads):
+            avg_token_attn = attn_np[head].mean(axis=0)  # shape: (S,)
+            plt.plot(np.arange(S), avg_token_attn, label=f"Head {head}")
+
+        title_str = f"Avg Token Attention {name}"
+        file_name = f"avg_token_attention_{name}.png"
+        plt.xlabel("Token Index (Key)")
+        plt.ylabel("Average Attention Weight")
+        plt.title(title_str)
+        plt.legend()
+        plt.tight_layout()
+        plt.savefig(f'/home/sebastian/dev/xai-finetune/img/{file_name}')
+        plt.close()
 
     module_names = {id(mod): name for name, mod in model.named_modules()}
     def forward_hook(module, input, output):
@@ -191,7 +220,7 @@ def main():
                 f"    Mean: {pre.mean().item():.4f}\n"
                 f"    Std: {pre.std().item():.4f}"
             )
-            histogram(pre, full_name)
+            histogram(pre, full_name, pre_softmax=True)
         if hasattr(module, 'attn_postsoftmax'):
             post = module.attn_postsoftmax
             logger.info(
@@ -202,6 +231,8 @@ def main():
                 f"    Mean: {post.mean().item():.4f}\n"
                 f"    Std: {post.std().item():.4f}"
             )
+            histogram(post, full_name, post_softmax=True)
+            plot_avg_token_attention(post, full_name)
 
     for _, module in model.named_modules():
         module.register_forward_hook(forward_hook)

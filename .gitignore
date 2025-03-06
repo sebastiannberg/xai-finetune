@@ -10,6 +10,7 @@ sebastian-venv/
 # Data
 data/
 logs/
+img/
 *.png
 
 # AudioMAE specific paths
