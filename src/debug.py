@@ -2,16 +2,18 @@ import argparse
 import numpy as np
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader, Subset
-from timm.models.layers import to_2tuple, trunc_normal_
+from torch.utils.data import DataLoader
+from timm.models.layers import to_2tuple
 import logging
 import random
 import os
 from pathlib import Path
+import matplotlib.pyplot as plt
 
 from dataset_urban import UrbanDataset
 import models_vit as models_vit
 from grad import attribute
+
 
 # Setup paths
 PROJECT_ROOT = Path(__file__).parent.parent.absolute()
@@ -58,7 +60,7 @@ def get_args():
     parser = argparse.ArgumentParser(description='Finetune with XAI on UrbanSound8K dataset')
     parser.add_argument('--num_classes', type=int, default=10, help='Number of target classes')
     parser.add_argument('--target_length', type=int, default=512, help='Number of time frames for fbank')
-    parser.add_argument('--checkpoint', type=str, default='pretrained.pth', help='Filename for model checkpoint to load before fine-tuning')
+    parser.add_argument('--checkpoint', type=str, default='epoch_1_20250305_233315.pth', help='Filename for model checkpoint to load before fine-tuning')
     parser.add_argument('--num_workers', type=int, default=4, help='Number of worker threads for data loading')
     parser.add_argument('--seed', type=int, default=0, help='To control the random seed for reproducibility')
     return parser.parse_args()
@@ -127,62 +129,16 @@ def main():
         requires_grad=False
     )
     checkpoint = torch.load(os.path.join(CKPT_PATH, args.checkpoint), map_location='cpu')
-    checkpoint_model = checkpoint['model']
-    state_dict = model.state_dict()
+    checkpoint_state_dict = checkpoint['model_state_dict']
+    with torch.no_grad():
+        model.patch_embed.proj.weight.copy_(checkpoint_state_dict['patch_embed.proj.weight'])
+        model.patch_embed.proj.bias.copy_(checkpoint_state_dict['patch_embed.proj.bias'])
+        model.pos_embed.data.copy_(checkpoint_state_dict['pos_embed'])
 
-    # Check if positional embeddings need to be interpolated
-    if 'pos_embed' in checkpoint_model:
-        if checkpoint_model['pos_embed'].shape != model.pos_embed.shape:
-            logger.info(f"Interpolating positional embeddings from {checkpoint_model['pos_embed'].shape} to {torch.Size([1, 257, 768])}")
-            pos_embed_checkpoint = checkpoint_model['pos_embed']  # [1, old_num_tokens, embed_dim]
-            cls_token = pos_embed_checkpoint[:, :1, :]            # [1, 1, embed_dim]
-            pos_tokens = pos_embed_checkpoint[:, 1:, :]           # [1, old_num_tokens-1, embed_dim]
-
-            # Determine the original grid shape
-            num_tokens_pretrained = pos_tokens.shape[1]
-            if num_tokens_pretrained == 512:
-                grid_shape_pretrained = (8, 64)  # Known grid shape from pretraining
-            else:
-                grid_size = int(np.sqrt(num_tokens_pretrained))
-                grid_shape_pretrained = (grid_size, grid_size)
-
-            # Reshape from (1, num_tokens, embed_dim) -> (1, grid_height, grid_width, embed_dim)
-            pos_tokens = pos_tokens.reshape(1, grid_shape_pretrained[0], grid_shape_pretrained[1], -1)
-            # Permute to (1, embed_dim, grid_height, grid_width) for interpolation
-            pos_tokens = pos_tokens.permute(0, 3, 1, 2)
-
-            # New grid size from your custom patch embedding (e.g., (32, 8) in your case)
-            new_grid_size = model.patch_embed.patch_hw
-
-            # Interpolate using bilinear interpolation
-            pos_tokens = torch.nn.functional.interpolate(
-                pos_tokens,
-                size=new_grid_size,
-                mode='bilinear',
-                align_corners=False
-            )
-            # Permute back and reshape to (1, new_num_tokens, embed_dim)
-            pos_tokens = pos_tokens.permute(0, 2, 3, 1).reshape(1, -1, pos_embed_checkpoint.shape[-1])
-
-            # Concatenate the class token back
-            new_pos_embed = torch.cat((cls_token, pos_tokens), dim=1)
-            checkpoint_model['pos_embed'] = new_pos_embed
-
-    # Remove the classification head weights if they don't match the current model's output shape
-    # This prevents shape mismatch issues when fine-tuning on a different number of classes
-    for k in ['head.weight', 'head.bias']:
-        if k in checkpoint_model and checkpoint_model[k].shape != state_dict[k].shape:
-            logger.info(f"Removing key {k} from pretrained checkpoint due to shape mismatch.")
-            del checkpoint_model[k]
-    # Load the remaining pre-trained weights into the model
-    # strict=False allows partial loading (ignores missing keys like the removed head)
-    msg = model.load_state_dict(checkpoint_model, strict=False)
+    msg = model.load_state_dict(checkpoint_state_dict, strict=False)
     logger.info(msg)
-    # Reinitialize the classification head with small random values
-    # This ensures the new classification layer starts learning from scratch
-    trunc_normal_(model.head.weight, std=2e-5)
-    model.to(device)
 
+    model.to(device)
     logger.info(f'Device: {device}')
 
     # Debug
@@ -192,6 +148,23 @@ def main():
     label = label.to(device)
     logger.info(f'fbank.size() {fbank.size()}')
     logger.info(f'label.size() {label.size()}')
+
+    def histogram(tensor, name):
+        if tensor.dim() == 4:
+            b, h, s1, s2 = tensor.shape
+            # Flatten the last two dimensions -> (batch, head, s1*s2)
+            tensor_flat = tensor.view(b, h, -1)
+            for head in range(h):
+                # For a given head, flatten over batch and flattened seq dims
+                head_data = tensor_flat[:, head, :].flatten().cpu().detach().numpy()
+                plt.figure()
+                plt.hist(head_data, bins=100, alpha=0.7)
+                plt.title(f"{name} - Head {head}")
+                head_file = f"{name}_head{head}.png"
+                plt.xlabel("Value")
+                plt.ylabel("Frequency")
+                plt.savefig(f'/cluster/projects/uasc/sebastian/xai-finetune/', head_file)
+                plt.close()
 
     module_names = {id(mod): name for name, mod in model.named_modules()}
     def forward_hook(module, input, output):
@@ -218,6 +191,7 @@ def main():
                 f"    Mean: {pre.mean().item():.4f}\n"
                 f"    Std: {pre.std().item():.4f}"
             )
+            histogram(pre, full_name)
         if hasattr(module, 'attn_postsoftmax'):
             post = module.attn_postsoftmax
             logger.info(
