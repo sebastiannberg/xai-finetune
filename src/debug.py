@@ -12,7 +12,6 @@ import matplotlib.pyplot as plt
 
 from dataset_urban import UrbanDataset
 import models_vit as models_vit
-from grad import attribute
 
 
 # Setup paths
@@ -31,6 +30,53 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger()
+
+# Plot functions
+def forward_histogram(tensor, name, pre_softmax=False, post_softmax=False):
+    print(f'histogram for {name}')
+    if tensor.dim() == 4:
+        b, h, s1, s2 = tensor.shape
+        # Flatten the last two dimensions -> (batch, head, s1*s2)
+        tensor_flat = tensor.view(b, h, -1)
+        for head in range(h):
+            # For a given head, flatten over batch and flattened seq dims
+            head_data = tensor_flat[:, head, :].flatten().cpu().detach().numpy()
+            plt.figure()
+            plt.hist(head_data, bins=100, alpha=0.7)
+            if pre_softmax:
+                title_str = f"Pre-Softmax {name} - Head {head}"
+                head_file = f"pre_softmax_{name}_head{head}.png"
+            elif post_softmax:
+                title_str = f"Post-Softmax {name} - Head {head}"
+                head_file = f"post_softmax_{name}_head{head}.png"
+            else:
+                title_str = f"{name} - Head {head}"
+                head_file = f"{name}_head{head}.png"
+            plt.title(title_str)
+            plt.xlabel("Value")
+            plt.ylabel("Frequency")
+            plt.savefig(f'/home/sebastian/dev/xai-finetune/img/forward/{head_file}')
+            plt.close()
+
+def plot_avg_token_attention(tensor, name):
+    print(f'plot average token attention for {name}')
+    attn_np = tensor.detach().cpu().numpy()[0]
+    num_heads, S, _ = attn_np.shape
+
+    plt.figure(figsize=(10, 6))
+    for head in range(num_heads):
+        avg_token_attn = attn_np[head].mean(axis=0)  # shape: (S,)
+        plt.plot(np.arange(S), avg_token_attn, label=f"Head {head}")
+
+    title_str = f"Avg Token Attention {name}"
+    file_name = f"avg_token_attention_{name}.png"
+    plt.xlabel("Token Index (Key)")
+    plt.ylabel("Average Attention Weight")
+    plt.title(title_str)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(f'/home/sebastian/dev/xai-finetune/img/forward/{file_name}')
+    plt.close()
 
 class PatchEmbed_new(nn.Module):
 
@@ -63,6 +109,7 @@ def get_args():
     parser.add_argument('--checkpoint', type=str, default='epoch_1_20250305_233315.pth', help='Filename for model checkpoint to load before fine-tuning')
     parser.add_argument('--num_workers', type=int, default=4, help='Number of worker threads for data loading')
     parser.add_argument('--seed', type=int, default=0, help='To control the random seed for reproducibility')
+    parser.add_argument('--debug_mode', type=str, default='forward', help='"forward" for forward pass inspection, "backward" for gradient inspection')
     return parser.parse_args()
 
 def main():
@@ -141,61 +188,8 @@ def main():
     model.to(device)
     logger.info(f'Device: {device}')
 
-    # Debug
-    model.train()
-    fbank, label = next(iter(data_loader_debug))
-    fbank = fbank.to(device)
-    label = label.to(device)
-    logger.info(f'fbank.size() {fbank.size()}')
-    logger.info(f'label.size() {label.size()}')
-
-    def histogram(tensor, name, pre_softmax=False, post_softmax=False):
-        print(f'histogram for {name}')
-        if tensor.dim() == 4:
-            b, h, s1, s2 = tensor.shape
-            # Flatten the last two dimensions -> (batch, head, s1*s2)
-            tensor_flat = tensor.view(b, h, -1)
-            for head in range(h):
-                # For a given head, flatten over batch and flattened seq dims
-                head_data = tensor_flat[:, head, :].flatten().cpu().detach().numpy()
-                plt.figure()
-                plt.hist(head_data, bins=100, alpha=0.7)
-                if pre_softmax:
-                    title_str = f"Pre-Softmax {name} - Head {head}"
-                    head_file = f"pre_softmax_{name}_head{head}.png"
-                elif post_softmax:
-                    title_str = f"Post-Softmax {name} - Head {head}"
-                    head_file = f"post_softmax_{name}_head{head}.png"
-                else:
-                    title_str = f"{name} - Head {head}"
-                    head_file = f"{name}_head{head}.png"
-                plt.title(title_str)
-                plt.xlabel("Value")
-                plt.ylabel("Frequency")
-                plt.savefig(f'/home/sebastian/dev/xai-finetune/img/{head_file}')
-                plt.close()
-
-    def plot_avg_token_attention(tensor, name):
-        print(f'plot average token attention for {name}')
-        attn_np = tensor.detach().cpu().numpy()[0]
-        num_heads, S, _ = attn_np.shape
-
-        plt.figure(figsize=(10, 6))
-        for head in range(num_heads):
-            avg_token_attn = attn_np[head].mean(axis=0)  # shape: (S,)
-            plt.plot(np.arange(S), avg_token_attn, label=f"Head {head}")
-
-        title_str = f"Avg Token Attention {name}"
-        file_name = f"avg_token_attention_{name}.png"
-        plt.xlabel("Token Index (Key)")
-        plt.ylabel("Average Attention Weight")
-        plt.title(title_str)
-        plt.legend()
-        plt.tight_layout()
-        plt.savefig(f'/home/sebastian/dev/xai-finetune/img/{file_name}')
-        plt.close()
-
     module_names = {id(mod): name for name, mod in model.named_modules()}
+
     def forward_hook(module, input, output):
         in_tensor = input[0] if isinstance(input, tuple) else input
         full_name = module_names.get(id(module), module._get_name())
@@ -220,7 +214,7 @@ def main():
                 f"    Mean: {pre.mean().item():.4f}\n"
                 f"    Std: {pre.std().item():.4f}"
             )
-            histogram(pre, full_name, pre_softmax=True)
+            forward_histogram(pre, full_name, pre_softmax=True)
         if hasattr(module, 'attn_postsoftmax'):
             post = module.attn_postsoftmax
             logger.info(
@@ -231,13 +225,50 @@ def main():
                 f"    Mean: {post.mean().item():.4f}\n"
                 f"    Std: {post.std().item():.4f}"
             )
-            histogram(post, full_name, post_softmax=True)
+            forward_histogram(post, full_name, post_softmax=True)
             plot_avg_token_attention(post, full_name)
 
-    for _, module in model.named_modules():
-        module.register_forward_hook(forward_hook)
+    def backward_hook(module, grad_input, grad_output):
+        full_name = module_names.get(id(module), module._get_name())
+        module_type = module.__class__.__name__
 
-    logits = model(fbank)
+        grad_in_shape = grad_input[0].shape if grad_input and grad_input[0] is not None else "None"
+        grad_out_shape = grad_output[0].shape if grad_output and grad_output[0] is not None else "None"
+        grad_out_max = grad_output[0].max().item() if grad_output and grad_output[0] is not None else "N/A"
+        grad_out_min = grad_output[0].min().item() if grad_output and grad_output[0] is not None else "N/A"
+        grad_out_mean = grad_output[0].mean().item() if grad_output and grad_output[0] is not None else "N/A"
+        grad_out_std = grad_output[0].std().item() if grad_output and grad_output[0] is not None else "N/A"
+
+        logger.info(
+            f"Backward Hook [{full_name}] ({module_type}):\n"
+            f"    Grad Input shape: {grad_in_shape}\n"
+            f"    Grad Output shape: {grad_out_shape}\n"
+            f"    Grad Output Max: {grad_out_max}\n"
+            f"    Grad Output Min: {grad_out_min}\n"
+            f"    Grad Output Mean: {grad_out_mean}\n"
+            f"    Grad Output Std: {grad_out_std}"
+        )
+
+    for _, module in model.named_modules():
+        if args.debug_mode == 'forward':
+            module.register_forward_hook(forward_hook)
+        elif args.debug_mode == 'backward':
+            module.register_full_backward_hook(backward_hook)
+
+    model.train()
+    fbank, label = next(iter(data_loader_debug))
+    fbank = fbank.to(device)
+    label = label.to(device)
+    logger.info(f'fbank.size() {fbank.size()}')
+    logger.info(f'label.size() {label.size()}')
+    if args.debug_mode == 'forward':
+        _ = model(fbank)
+    elif args.debug_mode == 'backward':
+        criterion = nn.BCEWithLogitsLoss()
+        model.zero_grad()
+        logits = model(fbank)
+        loss = criterion(logits, label)
+        loss.backward()
 
 if __name__ == '__main__':
     main()
