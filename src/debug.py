@@ -232,22 +232,20 @@ def main():
         full_name = module_names.get(id(module), module._get_name())
         module_type = module.__class__.__name__
 
-        grad_in_shape = grad_input[0].shape if grad_input and grad_input[0] is not None else "None"
-        grad_out_shape = grad_output[0].shape if grad_output and grad_output[0] is not None else "None"
-        grad_out_max = grad_output[0].max().item() if grad_output and grad_output[0] is not None else "N/A"
-        grad_out_min = grad_output[0].min().item() if grad_output and grad_output[0] is not None else "N/A"
-        grad_out_mean = grad_output[0].mean().item() if grad_output and grad_output[0] is not None else "N/A"
-        grad_out_std = grad_output[0].std().item() if grad_output and grad_output[0] is not None else "N/A"
-
-        logger.info(
-            f"Backward Hook [{full_name}] ({module_type}):\n"
-            f"    Grad Input shape: {grad_in_shape}\n"
-            f"    Grad Output shape: {grad_out_shape}\n"
-            f"    Grad Output Max: {grad_out_max}\n"
-            f"    Grad Output Min: {grad_out_min}\n"
-            f"    Grad Output Mean: {grad_out_mean}\n"
-            f"    Grad Output Std: {grad_out_std}"
-        )
+        if grad_input and grad_input[0] is not None:
+            logger.info(
+                f"Backward Hook [{full_name}] ({module_type}):\n"
+                f"    Grad Input shape: {grad_input[0].shape}\n"
+                f"    Grad Input Max: {grad_input[0].max().item()}\n"
+                f"    Grad Input Min: {grad_input[0].min().item()}\n"
+                f"    Grad Input Mean: {grad_input[0].mean().item()}\n"
+                f"    Grad Input Std: {grad_input[0].std().item()}"
+            )
+        else:
+            logger.info(
+                f"Backward Hook [{full_name}] ({module_type}): grad_input is None "
+                f"or grad_input[0] is None."
+            )
 
     for _, module in model.named_modules():
         if args.debug_mode == 'forward':
@@ -268,9 +266,20 @@ def main():
         model.zero_grad()
         logits = model(fbank)
         loss = criterion(logits, label)
+        logger.info(f'loss: {loss.item()}')
         loss.backward()
+
+        for name, param in reversed(list(model.named_parameters())):
+            if param.grad is not None:
+                logger.info(
+                    f"Param {name}\n"
+                    f"Grad shape: {param.grad.shape}\n"
+                    f"Grad max: {param.grad.max()}\n"
+                    f"Grad min: {param.grad.min()}\n"
+                    f"Grad mean: {param.grad.mean()}\n"
+                    f"Grad std: {param.grad.std()}"
+                )
 
 if __name__ == '__main__':
     main()
     print('done')
-
