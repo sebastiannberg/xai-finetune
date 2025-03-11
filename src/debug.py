@@ -55,7 +55,7 @@ def forward_histogram(tensor, name, pre_softmax=False, post_softmax=False):
             plt.title(title_str)
             plt.xlabel("Value")
             plt.ylabel("Frequency")
-            plt.savefig(f'/home/sebastian/dev/xai-finetune/img/forward/{head_file}')
+            plt.savefig(os.path.join(PROJECT_ROOT, 'img', 'forward', head_file))
             plt.close()
 
 def plot_avg_token_attention(tensor, name):
@@ -75,7 +75,7 @@ def plot_avg_token_attention(tensor, name):
     plt.title(title_str)
     plt.legend()
     plt.tight_layout()
-    plt.savefig(f'/home/sebastian/dev/xai-finetune/img/forward/{file_name}')
+    plt.savefig(os.path.join(PROJECT_ROOT, 'img', 'forward', file_name))
     plt.close()
 
 class PatchEmbed_new(nn.Module):
