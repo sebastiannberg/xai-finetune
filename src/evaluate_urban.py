@@ -41,7 +41,7 @@ class PatchEmbed_new(nn.Module):
 
 def get_args():
     parser = argparse.ArgumentParser(description='Finetune on UrbanSound8K dataset')
-    parser.add_argument('--checkpoint', type=str, default='epoch_40_20250218_222750.pth', help='Filename for model to load for evaluation')
+    parser.add_argument('--checkpoint', type=str, default='epoch_60_20250222_192308.pth', help='Filename for model to load for evaluation')
     parser.add_argument('--num_classes', type=int, default=10, help='Number of target classes')
     parser.add_argument('--target_length', type=int, default=512, help='Number of time frames for fbank')
     parser.add_argument('--batch_size', type=int, default=64, help='Batch size for training and validation')

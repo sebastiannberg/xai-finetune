@@ -73,8 +73,8 @@ def get_args():
     parser.add_argument('--batch_size', type=int, default=32, help='Batch size for training and validation')
     parser.add_argument('--num_workers', type=int, default=10, help='Number of worker threads for data loading')
     parser.add_argument('--seed', type=int, default=0, help='To control the random seed for reproducibility')
-    parser.add_argument('--alpha', type=float, default=0.5, help='The strength of classification loss vs interpret loss')
-    parser.add_argument('--grad_scale', type=float, default=1e3, help='Scaling up gradients to avoid uniform distribution for attention_interpret')
+    parser.add_argument('--alpha', type=float, default=0.7, help='The strength of classification loss vs interpret loss')
+    parser.add_argument('--grad_scale', type=float, default=1e4, help='Scaling up gradients to avoid uniform distribution for attention_interpret')
     return parser.parse_args()
 
 def main():
@@ -279,7 +279,7 @@ def main():
                 optimizer.zero_grad()
 
                 with autocast():
-                    logits = model(fbank)
+                    logits, _ = model(fbank, return_attention=True)
                     loss = criterion(logits, label)
 
                 scaler.scale(loss).backward()
@@ -355,12 +355,45 @@ def main():
                     # Scale attention grads
                     selected_attention_grads = args.grad_scale * selected_attention_grads
 
-                    attention_interpret = attention * selected_attention_grads
-                    attention_interpret = attention_interpret.softmax(dim=-1)
+                    # Element wise mult
+                    pre_attention_interpret = attention * selected_attention_grads
+                    # Matrix mult
+                    # pre_attention_interpret = attention @ selected_attention_grads
 
-                    logger.info(f'attention [0, 0, 0, 0, :] {attention[0, 0, 0, 0, :]}')
-                    logger.info(f'selected_attention_grads [0, 0, 0, 0, :] {selected_attention_grads[0, 0, 0, 0, :]}')
-                    logger.info(f'attention_interpret [0, 0, 0, 0, :] {attention_interpret[0, 0, 0, 0, :]}')
+                    post_attention_interpret = pre_attention_interpret.softmax(dim=-1)
+
+                    # logger.info(
+                    #     f"Attention stats:\n"
+                    #     f"  shape: {attention.shape}\n"
+                    #     f"  max: {attention.max().item()}\n"
+                    #     f"  min: {attention.min().item()}\n"
+                    #     f"  mean: {attention.mean().item()}\n"
+                    #     f"  std: {attention.std().item()}"
+                    # )
+                    # logger.info(
+                    #     f"Selected Attention Grads stats:\n"
+                    #     f"  shape: {selected_attention_grads.shape}\n"
+                    #     f"  max: {selected_attention_grads.max().item()}\n"
+                    #     f"  min: {selected_attention_grads.min().item()}\n"
+                    #     f"  mean: {selected_attention_grads.mean().item()}\n"
+                    #     f"  std: {selected_attention_grads.std().item()}"
+                    # )
+                    # logger.info(
+                    #     f"Pre-Softmax Attention Interpret stats:\n"
+                    #     f"  shape: {pre_attention_interpret.shape}\n"
+                    #     f"  max: {pre_attention_interpret.max().item()}\n"
+                    #     f"  min: {pre_attention_interpret.min().item()}\n"
+                    #     f"  mean: {pre_attention_interpret.mean().item()}\n"
+                    #     f"  std: {pre_attention_interpret.std().item()}"
+                    # )
+                    # logger.info(
+                    #     f"Post-Softmax Attention Interpret stats:\n"
+                    #     f"  shape: {post_attention_interpret.shape}\n"
+                    #     f"  max: {post_attention_interpret.max().item()}\n"
+                    #     f"  min: {post_attention_interpret.min().item()}\n"
+                    #     f"  mean: {post_attention_interpret.mean().item()}\n"
+                    #     f"  std: {post_attention_interpret.std().item()}"
+                    # )
 
                     # attention is already softmaxed on the last dim
                     # attention_interpret is also softmaxed on the last dim
@@ -368,10 +401,10 @@ def main():
                     # A one-directional cross entropy can be computed as:
                     # CE(p || q) = - sum over i of p[i] * log(q[i])
 
-                    cross_ent_loss = -(attention * (attention_interpret + 1e-12).log()).sum(dim=-1).mean()
+                    cross_ent_loss = -(attention * (post_attention_interpret + 1e-12).log()).sum(dim=-1).mean()
 
-                    logger.info(f'interpret loss: {cross_ent_loss.item()}')
-                    logger.info(f'classification loss: {classification_loss.item()}')
+                    # logger.info(f'interpret loss: {cross_ent_loss.item()}')
+                    # logger.info(f'classification loss: {classification_loss.item()}')
 
                     loss = (args.alpha * classification_loss) + ((1 - args.alpha) * cross_ent_loss)
 
