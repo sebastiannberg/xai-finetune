@@ -1,6 +1,7 @@
 import torch
 import torch.utils.data
 from typing import List
+from tqdm import tqdm
 
 
 def _compute_gradients(model, inputs, class_idx):
@@ -54,7 +55,7 @@ def attribute(model: torch.nn.Module, class_loaders: List[torch.utils.data.DataL
     device = next(model.parameters()).device
 
     class_grads = []
-    for class_idx, loader in enumerate(class_loaders):
+    for class_idx, loader in tqdm(enumerate(class_loaders), desc="Attention Gradients", leave=False, total=len(class_loaders)):
         accum_grads = None
         total_samples = 0
 
