@@ -59,6 +59,34 @@ def forward_histogram(tensor, name, pre_softmax=False, post_softmax=False):
             plt.savefig(os.path.join(PROJECT_ROOT, 'img', 'forward', head_file))
             plt.close()
 
+def backward_histograms(grads: torch.Tensor):
+    num_blocks = grads.size(0)
+    num_heads = grads.size(1)
+    seq_len = grads.size(2)
+    logger.info(f"blocks: {num_blocks}, heads: {num_heads}, seq: {seq_len}")
+
+    save_dir = os.path.join(PROJECT_ROOT, 'img', 'backward')
+    os.makedirs(save_dir, exist_ok=True)
+
+    for block_idx in range(num_blocks):
+        block_grad = grads[block_idx]  
+        for head_idx in range(num_heads):
+            print(f'histogram for backward {block_idx}, {head_idx}')
+            head_grad = block_grad[head_idx, :, :]
+            head_grad = head_grad.cpu().numpy().flatten()
+
+            plt.figure(figsize=(10, 6))
+            plt.hist(head_grad, bins=100, alpha=0.7)
+            title_str = f"Grad Block {block_idx}, Head {head_idx}"
+            plt.title(title_str)
+            plt.xlabel("Gradient Value")
+            plt.ylabel("Frequency")
+            plt.tight_layout()
+
+            file_name = f"block_{block_idx}_head_{head_idx}.png"
+            plt.savefig(os.path.join(save_dir, file_name))
+            plt.close()
+
 def plot_avg_token_attention(tensor, name):
     print(f'plot average token attention for {name}')
     attn_np = tensor.detach().cpu().numpy()[0]
@@ -78,6 +106,9 @@ def plot_avg_token_attention(tensor, name):
     plt.tight_layout()
     plt.savefig(os.path.join(PROJECT_ROOT, 'img', 'forward', file_name))
     plt.close()
+
+def plot_avg_token_grad(grads):
+    pass
 
 class PatchEmbed_new(nn.Module):
 
@@ -263,13 +294,39 @@ def main():
     if args.debug_mode == 'forward':
         _ = model(fbank)
     elif args.debug_mode == 'backward':
-        criterion = nn.BCEWithLogitsLoss()
         model.zero_grad()
         logits = model(fbank)
-        loss = criterion(logits, label)
-        logger.info(f'loss: {loss.item()}')
-        loss.backward()
+        class_idx = label.argmax()
+        target_logit = logits[:, class_idx]
 
+        # Make sure to 'retain_grad()' for each attention block
+        for block in model.blocks:
+            if hasattr(block.attn, 'attn') and block.attn.attn is not None:
+                if block.attn.attn.requires_grad:
+                    block.attn.attn.retain_grad()
+
+        target_logit.backward()
+
+        all_grads = []
+        for block in model.blocks:
+            if hasattr(block.attn, 'attn') and block.attn.attn.grad is not None:
+                all_grads.append(block.attn.attn.grad.detach().clone())
+            else:
+                print(f"Warning: No gradients for block {block}")
+                # Add a placeholder of zeros with the same shape
+                if len(all_grads) > 0:
+                    all_grads.append(torch.zeros_like(all_grads[0]))
+                else:
+                    print("No valid gradients found in any block")
+                    return None
+
+        grads = torch.stack(all_grads, dim=0)
+        grads = grads.squeeze(1)
+        # Result shape: (num_blocks, num_heads, seq_len, seq_len)
+        backward_histograms(grads)
+        # TODO: plot of average received attention for grads, but only one plot, that means sum or average over blocks and heads
+
+        # Log model parameters gradients stats
         for name, param in reversed(list(model.named_parameters())):
             if param.grad is not None:
                 logger.info(
