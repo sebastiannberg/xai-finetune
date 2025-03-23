@@ -107,8 +107,26 @@ def plot_avg_token_attention(tensor, name):
     plt.savefig(os.path.join(PROJECT_ROOT, 'img', 'forward', file_name))
     plt.close()
 
-def plot_avg_token_grad(grads):
-    pass
+def plot_avg_attn_grad(grads):
+    save_dir = os.path.join(PROJECT_ROOT, 'img', 'backward')
+    os.makedirs(save_dir, exist_ok=True)
+
+    avg_block_head = grads.mean(dim=(0, 1))
+    query_avg = avg_block_head.mean(dim=0)
+    print("plot average attention gradient values")
+
+    plt.figure(figsize=(10, 6))
+    x_vals = np.arange(query_avg.size(0))
+    plt.plot(x_vals, query_avg.cpu().numpy(), label="Avg Grad across blocks, heads, queries")
+    plt.xlabel("Key Token Index")
+    plt.ylabel("Average Gradient")
+    plt.title("Average Attention Gradient (summarizing all blocks/heads)")
+    plt.legend()
+    plt.tight_layout()
+
+    file_name = "avg_attn_grad.png"
+    plt.savefig(os.path.join(save_dir, file_name))
+    plt.close()
 
 class PatchEmbed_new(nn.Module):
 
@@ -325,6 +343,7 @@ def main():
         # Result shape: (num_blocks, num_heads, seq_len, seq_len)
         backward_histograms(grads)
         # TODO: plot of average received attention for grads, but only one plot, that means sum or average over blocks and heads
+        plot_avg_attn_grad(grads)
 
         # Log model parameters gradients stats
         for name, param in reversed(list(model.named_parameters())):
