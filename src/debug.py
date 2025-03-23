@@ -41,7 +41,7 @@ def forward_histogram(tensor, name, pre_softmax=False, post_softmax=False):
         for head in range(h):
             # For a given head, flatten over batch and flattened seq dims
             head_data = tensor_flat[:, head, :].flatten().cpu().detach().numpy()
-            plt.figure()
+            plt.figure(figsize=(10, 6))
             plt.hist(head_data, bins=100, alpha=0.7)
             if pre_softmax:
                 title_str = f"Pre-Softmax {name} - Head {head}"
@@ -55,6 +55,7 @@ def forward_histogram(tensor, name, pre_softmax=False, post_softmax=False):
             plt.title(title_str)
             plt.xlabel("Value")
             plt.ylabel("Frequency")
+            plt.tight_layout()
             plt.savefig(os.path.join(PROJECT_ROOT, 'img', 'forward', head_file))
             plt.close()
 
