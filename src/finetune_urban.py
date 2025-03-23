@@ -27,6 +27,7 @@ LOGS_PATH = os.path.join(PROJECT_ROOT, 'logs')
 URBAN_PATH = os.path.join(PROJECT_ROOT, 'data', 'UrbanSound8K')
 
 # Setup logger
+os.makedirs(LOGS_PATH, exist_ok=True)
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(message)s',
@@ -69,7 +70,7 @@ def get_args():
     parser.add_argument('--num_classes', type=int, default=10, help='Number of target classes')
     parser.add_argument('--target_length', type=int, default=512, help='Number of time frames for fbank')
     parser.add_argument('--checkpoint', type=str, default='pretrained.pth', help='Filename for model checkpoint to load before fine-tuning')
-    parser.add_argument('--batch_size', type=int, default=32, help='Batch size for training and validation')
+    parser.add_argument('--batch_size', type=int, default=16, help='Batch size for training and validation')
     parser.add_argument('--num_workers', type=int, default=10, help='Number of worker threads for data loading')
     parser.add_argument('--seed', type=int, default=0, help='To control the random seed for reproducibility')
     return parser.parse_args()
