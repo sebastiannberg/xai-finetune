@@ -12,6 +12,7 @@ data/
 logs/
 img/
 *.png
+*.out
 
 # AudioMAE specific paths
 ckpt/
