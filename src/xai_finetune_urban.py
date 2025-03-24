@@ -406,12 +406,14 @@ def main():
                     # A one-directional cross entropy can be computed as:
                     # CE(p || q) = - sum over i of p[i] * log(q[i])
 
-                    cross_ent_loss = -(post_attention_interpret.detach() * (attention + 1e-12).log()).sum(dim=-1).mean()
+                    # cross_ent_loss = -(post_attention_interpret.detach() * (attention + 1e-12).log()).sum(dim=-1).mean()
+                    loss_sum = -(post_attention_interpret.detach() * (attention + 1e-12).log()).sum()
+                    interpret_loss = loss_sum / attention.numel()
 
-                    # logger.info(f'interpret loss: {cross_ent_loss.item()}')
-                    # logger.info(f'classification loss: {classification_loss.item()}')
+                    logger.info(f'classification loss: {classification_loss.item()}')
+                    logger.info(f'interpret loss: {interpret_loss.item()}')
 
-                    loss = (args.alpha * classification_loss) + ((1 - args.alpha) * cross_ent_loss)
+                    loss = (args.alpha * classification_loss) + ((1 - args.alpha) * interpret_loss)
 
                 scaler.scale(loss).backward()
                 scaler.step(optimizer)
