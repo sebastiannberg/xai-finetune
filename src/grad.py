@@ -21,8 +21,6 @@ def _compute_gradients(model, inputs, class_idx):
                 if block.attn.attn.requires_grad:
                     block.attn.attn.retain_grad()
 
-        scalar_output = target_logits.sum()
-
         # Backprop
         scalar_output.backward()
 
@@ -43,6 +41,12 @@ def _compute_gradients(model, inputs, class_idx):
 
         # Result shape: (num_blocks, num_heads, seq_len, seq_len)
         stacked_grads = torch.stack(all_grads, dim=0)
+
+        # Remove retained gradients to clean up
+        for block in model.blocks:
+            if hasattr(block.attn, 'attn') and block.attn.attn is not None:
+                if block.attn.attn.grad is not None:
+                    block.attn.attn.grad = None
 
         model.zero_grad()
 
@@ -82,5 +86,5 @@ def attribute(model: torch.nn.Module, class_loaders: List[torch.utils.data.DataL
         class_grad = accum_grads / float(total_samples)
         class_grads.append(class_grad)
 
-    # Return a tensor of (class, block, head, emb, emb)
+    # Return a tensor of (class, block, head, seq, seq)
     return torch.stack(class_grads, dim=0)
