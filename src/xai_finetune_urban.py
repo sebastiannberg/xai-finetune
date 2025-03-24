@@ -20,6 +20,7 @@ from collections import defaultdict
 from dataset_urban import UrbanDataset
 import models_vit as models_vit
 from grad import attribute
+from utils import plot_class_attention_grads, plot_attention
 
 # Setup paths
 PROJECT_ROOT = Path(__file__).parent.parent.absolute()
@@ -279,7 +280,7 @@ def main():
                 optimizer.zero_grad()
 
                 with autocast():
-                    logits, _ = model(fbank, return_attention=True)
+                    logits, attention = model(fbank, return_attention=True)
                     loss = criterion(logits, label)
 
                 scaler.scale(loss).backward()
@@ -292,6 +293,10 @@ def main():
 
             # Calculate attention gradients
             class_attention_grads = attribute(model, class_loaders)
+
+            # Plot
+            # plot_attention(attention)
+            # plot_class_attention_grads(class_attention_grads)
 
             # Validation
             model.eval()
@@ -401,7 +406,7 @@ def main():
                     # A one-directional cross entropy can be computed as:
                     # CE(p || q) = - sum over i of p[i] * log(q[i])
 
-                    cross_ent_loss = -(attention * (post_attention_interpret + 1e-12).log()).sum(dim=-1).mean()
+                    cross_ent_loss = -(post_attention_interpret.detach() * (attention + 1e-12).log()).sum(dim=-1).mean()
 
                     # logger.info(f'interpret loss: {cross_ent_loss.item()}')
                     # logger.info(f'classification loss: {classification_loss.item()}')
