@@ -289,7 +289,7 @@ def main():
 
                 total_train_loss += loss.item()
 
-            avg_train_loss = total_train_loss / len(data_loader_train.dataset)
+            epoch_loss = total_train_loss / len(data_loader_train)
 
             # Calculate attention gradients
             class_attention_grads = attribute(model, class_loaders)
@@ -319,7 +319,7 @@ def main():
                     all_preds.append(preds.cpu())
                     all_labels.append(true_classes.cpu())
 
-            avg_val_loss = total_val_loss / len(data_loader_val.dataset)
+            val_loss = total_val_loss / len(data_loader_val)
 
             all_preds = torch.cat(all_preds).numpy()
             all_labels = torch.cat(all_labels).numpy()
@@ -329,8 +329,8 @@ def main():
 
             logger.info("-"*40)
             logger.info(f"Epoch [{epoch+1}/{args.epochs}]")
-            logger.info(f"  Train Loss:    {avg_train_loss:.4f}")
-            logger.info(f"  Val Loss:      {avg_val_loss:.4f}")
+            logger.info(f"  Train Loss:    {epoch_loss:.4f}")
+            logger.info(f"  Val Loss:      {val_loss:.4f}")
             logger.info(f"  Val Accuracy:  {val_accuracy:.4f}")
             logger.info(f"  Val F1:        {val_f1:.4f}")
 
@@ -419,7 +419,7 @@ def main():
 
                 total_train_loss += loss.item()
 
-            avg_train_loss = total_train_loss / len(data_loader_train.dataset)
+            epoch_loss = total_train_loss / len(data_loader_train)
 
             # Calculate attention gradients
             class_attention_grads = attribute(model, class_loaders)
@@ -445,7 +445,7 @@ def main():
                     all_preds.append(preds.cpu())
                     all_labels.append(true_classes.cpu())
 
-            avg_val_loss = total_val_loss / len(data_loader_val.dataset)
+            val_loss = total_val_loss / len(data_loader_val.dataset)
 
             all_preds = torch.cat(all_preds).numpy()
             all_labels = torch.cat(all_labels).numpy()
@@ -455,8 +455,8 @@ def main():
 
             logger.info("-"*40)
             logger.info(f"Epoch [{epoch+1}/{args.epochs}]")
-            logger.info(f"  Train Loss:    {avg_train_loss:.4f}")
-            logger.info(f"  Val Loss:      {avg_val_loss:.4f}")
+            logger.info(f"  Train Loss:    {epoch_loss:.4f}")
+            logger.info(f"  Val Loss:      {val_loss:.4f}")
             logger.info(f"  Val Accuracy:  {val_accuracy:.4f}")
             logger.info(f"  Val F1:        {val_f1:.4f}")
 
@@ -473,7 +473,7 @@ def main():
                     'epoch': epoch + 1,
                     'model_state_dict': model.state_dict(),
                     'optimizer_state_dict': optimizer.state_dict(),
-                    'val_loss': avg_val_loss,
+                    'val_loss': val_loss,
                     'val_accuracy': val_accuracy,
                     'val_f1': val_f1,
                     'args': vars(args)
