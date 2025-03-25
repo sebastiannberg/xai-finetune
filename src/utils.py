@@ -22,7 +22,7 @@ def plot_class_attention_grads(class_attention_grads: torch.Tensor):
     plt.tight_layout()
 
     file_name = "class_attention_grads.png"
-    plt.savefig(os.path.join(PROJECT_ROOT, file_name))
+    plt.savefig(os.path.join(PROJECT_ROOT, 'img', file_name))
     plt.close()
 
 def plot_attention(attention: torch.Tensor):
@@ -40,5 +40,17 @@ def plot_attention(attention: torch.Tensor):
     plt.tight_layout()
 
     file_name = "attention.png"
-    plt.savefig(os.path.join(PROJECT_ROOT, file_name))
+    plt.savefig(os.path.join(PROJECT_ROOT, 'img', file_name))
+    plt.close()
+
+def plot_attention_heatmap(attention: torch.Tensor):
+    avg = attention.mean(dim=(0, 1, 2))
+
+    plt.figure(figsize=(15, 15))
+    plt.imshow(avg.cpu().detach().numpy(), cmap='viridis')
+    plt.title("Attention Heatmap (averaged over batch/blocks/heads)")
+    plt.tight_layout()
+
+    file_name = "attention_heatmap.png"
+    plt.savefig(os.path.join(PROJECT_ROOT, 'img', file_name))
     plt.close()
