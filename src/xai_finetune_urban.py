@@ -71,7 +71,7 @@ def get_args():
     parser.add_argument('--num_classes', type=int, default=10, help='Number of target classes')
     parser.add_argument('--target_length', type=int, default=512, help='Number of time frames for fbank')
     parser.add_argument('--checkpoint', type=str, default='pretrained.pth', help='Filename for model checkpoint to load before fine-tuning')
-    parser.add_argument('--batch_size', type=int, default=32, help='Batch size for training and validation')
+    parser.add_argument('--batch_size', type=int, default=4, help='Batch size for training and validation')
     parser.add_argument('--num_workers', type=int, default=10, help='Number of worker threads for data loading')
     parser.add_argument('--seed', type=int, default=0, help='To control the random seed for reproducibility')
     parser.add_argument('--alpha', type=float, default=0.7, help='The strength of classification loss vs interpret loss')
@@ -408,9 +408,7 @@ def main():
                     # A one-directional cross entropy can be computed as:
                     # CE(p || q) = - sum over i of p[i] * log(q[i])
 
-                    # cross_ent_loss = -(post_attention_interpret.detach() * (attention + 1e-12).log()).sum(dim=-1).mean()
-                    loss_sum = -(post_attention_interpret.detach() * (attention + 1e-12).log()).sum()
-                    interpret_loss = loss_sum / attention.numel()
+                    interpret_loss = -(post_attention_interpret.detach() * (attention + 1e-12).log()).sum(dim=-1).mean()
 
                     logger.info(f'classification loss: {classification_loss.item()}')
                     logger.info(f'interpret loss: {interpret_loss.item()}')

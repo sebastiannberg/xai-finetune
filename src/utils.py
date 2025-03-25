@@ -47,7 +47,15 @@ def plot_attention_heatmap(attention: torch.Tensor):
     avg = attention.mean(dim=(0, 1, 2))
 
     plt.figure(figsize=(15, 15))
-    plt.imshow(avg.cpu().detach().numpy(), cmap='viridis')
+    plt.imshow(avg.cpu().detach().numpy(), cmap='hot')
+    plt.colorbar(label='Attention Weight')
+
+    ax = plt.gca()
+    ax.xaxis.set_ticks_position('top')
+    ax.xaxis.set_label_position('top')
+
+    plt.xlabel("Key Index")
+    plt.ylabel("Query Index")
     plt.title("Attention Heatmap (averaged over batch/blocks/heads)")
     plt.tight_layout()
 
