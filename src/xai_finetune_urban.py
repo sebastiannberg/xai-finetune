@@ -20,7 +20,7 @@ from collections import defaultdict
 from dataset_urban import UrbanDataset
 import models_vit as models_vit
 from grad import attribute
-from utils import plot_class_attention_grads, plot_attention, plot_attention_heatmap
+from utils import plot_attention, plot_attention_heatmap, plot_class_attention_grads
 
 # Setup paths
 PROJECT_ROOT = Path(__file__).parent.parent.absolute()
@@ -295,9 +295,9 @@ def main():
             class_attention_grads = attribute(model, class_loaders)
 
             # Plot
-            # plot_attention(attention)
+            plot_attention(attention)
             plot_attention_heatmap(attention)
-            # plot_class_attention_grads(class_attention_grads)
+            plot_class_attention_grads(class_attention_grads)
 
             # Validation
             model.eval()
