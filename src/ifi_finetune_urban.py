@@ -29,6 +29,7 @@ LOGS_PATH = os.path.join(PROJECT_ROOT, 'logs')
 URBAN_PATH = os.path.join(PROJECT_ROOT, 'data', 'UrbanSound8K')
 
 # Setup logger
+os.makedirs(LOGS_PATH, exist_ok=True)
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(message)s',
@@ -64,7 +65,7 @@ class PatchEmbed_new(nn.Module):
         return x
 
 def get_args():
-    parser = argparse.ArgumentParser(description='Finetune with XAI on UrbanSound8K dataset')
+    parser = argparse.ArgumentParser(description='Finetune with IFI on UrbanSound8K dataset')
     parser.add_argument('--epochs', type=int, default=60, help='Number of training epochs')
     parser.add_argument('--lr', type=float, default=1e-4, help='Learning rate')
     parser.add_argument('--weight_decay', type=float, default=5e-4, help='Weight decay for optimizer')

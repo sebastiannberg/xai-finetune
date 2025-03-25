@@ -70,7 +70,7 @@ def get_args():
     parser.add_argument('--num_classes', type=int, default=10, help='Number of target classes')
     parser.add_argument('--target_length', type=int, default=512, help='Number of time frames for fbank')
     parser.add_argument('--checkpoint', type=str, default='pretrained.pth', help='Filename for model checkpoint to load before fine-tuning')
-    parser.add_argument('--batch_size', type=int, default=16, help='Batch size for training and validation')
+    parser.add_argument('--batch_size', type=int, default=32, help='Batch size for training and validation')
     parser.add_argument('--num_workers', type=int, default=10, help='Number of worker threads for data loading')
     parser.add_argument('--seed', type=int, default=0, help='To control the random seed for reproducibility')
     return parser.parse_args()
@@ -253,7 +253,7 @@ def main():
 
             total_train_loss += loss.item()
 
-        avg_train_loss = total_train_loss / len(data_loader_train.dataset)
+        epoch_loss = total_train_loss / len(data_loader_train)
 
         model.eval()
         total_val_loss = 0.0
@@ -275,7 +275,7 @@ def main():
                 all_preds.append(preds.cpu())
                 all_labels.append(true_classes.cpu())
 
-        avg_val_loss = total_val_loss / len(data_loader_val.dataset)
+        val_loss = total_val_loss / len(data_loader_val.dataset)
 
         all_preds = torch.cat(all_preds).numpy()
         all_labels = torch.cat(all_labels).numpy()
@@ -285,8 +285,8 @@ def main():
 
         logger.info("-"*40)
         logger.info(f"Epoch [{epoch+1}/{args.epochs}]")
-        logger.info(f"  Train Loss:    {avg_train_loss:.4f}")
-        logger.info(f"  Val Loss:      {avg_val_loss:.4f}")
+        logger.info(f"  Train Loss:    {epoch_loss:.4f}")
+        logger.info(f"  Val Loss:      {val_loss:.4f}")
         logger.info(f"  Val Accuracy:  {val_accuracy:.4f}")
         logger.info(f"  Val F1:        {val_f1:.4f}")
 
@@ -301,7 +301,7 @@ def main():
                 'epoch': epoch + 1,
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
-                'val_loss': avg_val_loss,
+                'val_loss': val_loss,
                 'val_accuracy': val_accuracy,
                 'val_f1': val_f1,
                 'args': vars(args)
