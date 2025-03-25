@@ -295,9 +295,9 @@ def main():
             class_attention_grads = attribute(model, class_loaders)
 
             # Plot
-            plot_attention(attention)
-            plot_attention_heatmap(attention)
-            plot_class_attention_grads(class_attention_grads)
+            # plot_attention(attention)
+            # plot_attention_heatmap(attention)
+            # plot_class_attention_grads(class_attention_grads)
 
             # Validation
             model.eval()
