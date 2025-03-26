@@ -75,8 +75,8 @@ def get_args():
     parser.add_argument('--batch_size', type=int, default=32, help='Batch size for training and validation')
     parser.add_argument('--num_workers', type=int, default=10, help='Number of worker threads for data loading')
     parser.add_argument('--seed', type=int, default=0, help='To control the random seed for reproducibility')
-    parser.add_argument('--alpha', type=float, default=0.7, help='The strength of classification loss vs interpret loss')
-    parser.add_argument('--grad_scale', type=float, default=1e3, help='Scaling up gradients to avoid uniform distribution for attention_interpret')
+    parser.add_argument('--alpha', type=float, default=0.9, help='The strength of classification loss vs interpret loss')
+    parser.add_argument('--grad_scale', type=float, default=1e4, help='Scaling up gradients to avoid uniform distribution for attention_interpret')
     return parser.parse_args()
 
 def main():
@@ -360,23 +360,18 @@ def main():
 
                     label_indices = torch.argmax(label, dim=1)
                     selected_attention_grads = class_attention_grads[label_indices, ...]
-                    # selected_attention_grads = args.grad_scale * selected_attention_grads
+                    selected_attention_grads = args.grad_scale * selected_attention_grads
 
                     attention_wo_cls = attention[:, :, :, 1:, 1:]
+                    attention_wo_cls = attention_wo_cls.softmax(dim=-1)
                     grads_wo_cls = selected_attention_grads[:, :, :, 1:, 1:]
-                    print(attention_wo_cls.size())
-                    print(grads_wo_cls.size())
-
-                    # TODO: reapply softmax after removal of CLS
 
                     # Element wise mult
-                    pre_attention_interpret = attention * selected_attention_grads
-                    # Matrix mult
-                    # pre_attention_interpret = attention @ selected_attention_grads
+                    pre_attention_interpret = attention_wo_cls * grads_wo_cls
                     # Softmax to get distributions
                     post_attention_interpret = pre_attention_interpret.softmax(dim=-1)
 
-                    interpret_loss = -(post_attention_interpret.detach() * (attention + 1e-12).log()).sum(dim=-1).mean()
+                    interpret_loss = -(post_attention_interpret.detach() * (attention_wo_cls + 1e-12).log()).sum(dim=-1).mean()
 
                     loss = (args.alpha * classification_loss) + ((1 - args.alpha) * interpret_loss)
 
@@ -406,14 +401,14 @@ def main():
                     #     f"  mean: {pre_attention_interpret.mean().item()}\n"
                     #     f"  std: {pre_attention_interpret.std().item()}"
                     # )
-                    # logger.info(
-                    #     f"Post-Softmax Attention Interpret stats:\n"
-                    #     f"  shape: {post_attention_interpret.shape}\n"
-                    #     f"  max: {post_attention_interpret.max().item()}\n"
-                    #     f"  min: {post_attention_interpret.min().item()}\n"
-                    #     f"  mean: {post_attention_interpret.mean().item()}\n"
-                    #     f"  std: {post_attention_interpret.std().item()}"
-                    # )
+                    logger.info(
+                        f"Post-Softmax Attention Interpret stats:\n"
+                        f"  shape: {post_attention_interpret.shape}\n"
+                        f"  max: {post_attention_interpret.max().item()}\n"
+                        f"  min: {post_attention_interpret.min().item()}\n"
+                        f"  mean: {post_attention_interpret.mean().item()}\n"
+                        f"  std: {post_attention_interpret.std().item()}"
+                    )
 
                 scaler.scale(loss).backward()
                 scaler.step(optimizer)
