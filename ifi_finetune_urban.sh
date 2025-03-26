@@ -9,4 +9,4 @@
 #SBATCH --time=02:00:00
 
 source venv/bin/activate
-python src/xai_finetune_urban.py
+python src/ifi_finetune_urban.py
