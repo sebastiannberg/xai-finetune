@@ -360,16 +360,28 @@ def main():
 
                     label_indices = torch.argmax(label, dim=1)
                     selected_attention_grads = class_attention_grads[label_indices, ...]
-                    # Scale attention grads
-                    selected_attention_grads = args.grad_scale * selected_attention_grads
+                    # selected_attention_grads = args.grad_scale * selected_attention_grads
+
+                    attention_wo_cls = attention[:, :, :, 1:, 1:]
+                    grads_wo_cls = selected_attention_grads[:, :, :, 1:, 1:]
+                    print(attention_wo_cls.size())
+                    print(grads_wo_cls.size())
+
+                    # TODO: reapply softmax after removal of CLS
 
                     # Element wise mult
                     pre_attention_interpret = attention * selected_attention_grads
                     # Matrix mult
                     # pre_attention_interpret = attention @ selected_attention_grads
-
+                    # Softmax to get distributions
                     post_attention_interpret = pre_attention_interpret.softmax(dim=-1)
 
+                    interpret_loss = -(post_attention_interpret.detach() * (attention + 1e-12).log()).sum(dim=-1).mean()
+
+                    loss = (args.alpha * classification_loss) + ((1 - args.alpha) * interpret_loss)
+
+                    logger.info(f'classification loss: {args.alpha * classification_loss.item()}')
+                    logger.info(f'interpret loss: {(1 - args.alpha) * interpret_loss.item()}')
                     # logger.info(
                     #     f"Attention stats:\n"
                     #     f"  shape: {attention.shape}\n"
@@ -402,19 +414,6 @@ def main():
                     #     f"  mean: {post_attention_interpret.mean().item()}\n"
                     #     f"  std: {post_attention_interpret.std().item()}"
                     # )
-
-                    # attention is already softmaxed on the last dim
-                    # attention_interpret is also softmaxed on the last dim
-                    # Suppose p and q are both probabilities along the last dimension (already softmaxed).
-                    # A one-directional cross entropy can be computed as:
-                    # CE(p || q) = - sum over i of p[i] * log(q[i])
-
-                    interpret_loss = -(post_attention_interpret.detach() * (attention + 1e-12).log()).sum(dim=-1).mean()
-
-                    logger.info(f'classification loss: {classification_loss.item()}')
-                    logger.info(f'interpret loss: {interpret_loss.item()}')
-
-                    loss = (args.alpha * classification_loss) + ((1 - args.alpha) * interpret_loss)
 
                 scaler.scale(loss).backward()
                 scaler.step(optimizer)
