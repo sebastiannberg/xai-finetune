@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --account=share-ie-idi
-#SBATCH --job-name=xai_finetune_urban
+#SBATCH --job-name=ifi
 #SBATCH --partition=GPUQ
 #SBATCH --nodes=1
 #SBATCH --gres=gpu:a100:1
