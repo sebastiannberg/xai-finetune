@@ -76,7 +76,7 @@ def get_args():
     parser.add_argument('--num_workers', type=int, default=10, help='Number of worker threads for data loading')
     parser.add_argument('--seed', type=int, default=0, help='To control the random seed for reproducibility')
     parser.add_argument('--alpha', type=float, default=0.95, help='The strength of classification loss vs interpret loss')
-    parser.add_argument('--grad_scale', type=float, default=1e4, help='Scaling up gradients to avoid uniform distribution for attention_interpret')
+    parser.add_argument('--grad_scale', type=float, default=1e5, help='Scaling up gradients to avoid uniform distribution for attention_interpret')
     return parser.parse_args()
 
 def main():
