@@ -375,8 +375,6 @@ def main():
 
                     loss = (args.alpha * classification_loss) + ((1 - args.alpha) * interpret_loss)
 
-                    logger.info(f'classification loss: {args.alpha * classification_loss.item()}')
-                    logger.info(f'interpret loss: {(1 - args.alpha) * interpret_loss.item()}')
                     # logger.info(
                     #     f"Attention stats:\n"
                     #     f"  shape: {attention.shape}\n"
@@ -401,14 +399,14 @@ def main():
                     #     f"  mean: {pre_attention_interpret.mean().item()}\n"
                     #     f"  std: {pre_attention_interpret.std().item()}"
                     # )
-                    logger.info(
-                        f"Post-Softmax Attention Interpret stats:\n"
-                        f"  shape: {post_attention_interpret.shape}\n"
-                        f"  max: {post_attention_interpret.max().item()}\n"
-                        f"  min: {post_attention_interpret.min().item()}\n"
-                        f"  mean: {post_attention_interpret.mean().item()}\n"
-                        f"  std: {post_attention_interpret.std().item()}"
-                    )
+                    # logger.info(
+                    #     f"Post-Softmax Attention Interpret stats:\n"
+                    #     f"  shape: {post_attention_interpret.shape}\n"
+                    #     f"  max: {post_attention_interpret.max().item()}\n"
+                    #     f"  min: {post_attention_interpret.min().item()}\n"
+                    #     f"  mean: {post_attention_interpret.mean().item()}\n"
+                    #     f"  std: {post_attention_interpret.std().item()}"
+                    # )
 
                 scaler.scale(loss).backward()
                 scaler.step(optimizer)
@@ -416,6 +414,8 @@ def main():
 
                 total_train_loss += loss.item()
 
+            logger.info(f'classification loss: {args.alpha * classification_loss.item()}')
+            logger.info(f'interpret loss: {(1 - args.alpha) * interpret_loss.item()}')
             epoch_loss = total_train_loss / len(data_loader_train)
 
             # Calculate attention gradients
