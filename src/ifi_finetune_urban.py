@@ -16,6 +16,7 @@ import random
 import os
 from pathlib import Path
 from collections import defaultdict
+from torchviz import make_dot
 
 from dataset_urban import UrbanDataset
 import models_vit as models_vit
@@ -373,7 +374,8 @@ def main():
 
                     interpret_loss = -(post_attention_interpret.detach() * (attention_wo_cls + 1e-12).log()).sum(dim=-1).mean()
 
-                    loss = (args.alpha * classification_loss) + ((1 - args.alpha) * interpret_loss)
+                    # loss = (args.alpha * classification_loss) + ((1 - args.alpha) * interpret_loss)
+                    loss = interpret_loss
 
                     # logger.info(
                     #     f"Attention stats:\n"
@@ -409,12 +411,24 @@ def main():
                     # )
 
                 scaler.scale(loss).backward()
+
+                # Print gradient stats
+                for name, param in model.named_parameters():
+                    if param.grad is not None:
+                        print(f"{name} grad mean: {param.grad.abs().mean().item():.9e}")
+                    else:
+                        print(f"{name} grad is None!")
+
+                # Visualize the graph (can be done on a small debug batch)
+                dot = make_dot(loss, params=dict(model.named_parameters()))
+                dot.render("my_debug_graph", format="pdf")
+
                 scaler.step(optimizer)
                 scaler.update()
 
                 total_train_loss += loss.item()
 
-            logger.info(f'classification loss: {args.alpha * classification_loss.item()}')
+            # logger.info(f'classification loss: {args.alpha * classification_loss.item()}')
             logger.info(f'interpret loss: {(1 - args.alpha) * interpret_loss.item()}')
             epoch_loss = total_train_loss / len(data_loader_train)
 
