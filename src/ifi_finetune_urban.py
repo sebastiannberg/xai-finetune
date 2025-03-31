@@ -415,13 +415,13 @@ def main():
                 # Print gradient stats
                 for name, param in model.named_parameters():
                     if param.grad is not None:
-                        print(f"{name} grad mean: {param.grad.abs().mean().item():.9e}")
+                        logger.info(f"{name} grad mean: {param.grad.abs().mean().item():.9e}")
                     else:
-                        print(f"{name} grad is None!")
+                        logger.info(f"{name} grad is None!")
 
                 # Visualize the graph (can be done on a small debug batch)
-                dot = make_dot(loss, params=dict(model.named_parameters()))
-                dot.render("my_debug_graph", format="pdf")
+                # dot = make_dot(loss, params=dict(model.named_parameters()))
+                # dot.render("my_debug_graph", format="pdf")
 
                 scaler.step(optimizer)
                 scaler.update()
