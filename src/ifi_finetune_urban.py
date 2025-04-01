@@ -16,17 +16,18 @@ import random
 import os
 from pathlib import Path
 from collections import defaultdict
-from torchviz import make_dot
 
 from dataset_urban import UrbanDataset
 import models_vit as models_vit
 from grad import attribute
-from utils import plot_attention, plot_attention_heatmap, plot_class_attention_grads
+from utils import cls_argmax_percentage, avg_received_attention_cls, plot_attention_heatmap
 
 # Setup paths
 PROJECT_ROOT = Path(__file__).parent.parent.absolute()
 CKPT_PATH = os.path.join(PROJECT_ROOT, 'ckpt')
 LOGS_PATH = os.path.join(PROJECT_ROOT, 'logs')
+IMG_PATH = os.path.join(PROJECT_ROOT, 'img', datetime.datetime.now().strftime('%Y_%m_%d_%H%M%S'))
+os.makedirs(IMG_PATH, exist_ok=True)
 URBAN_PATH = os.path.join(PROJECT_ROOT, 'data', 'UrbanSound8K')
 
 # Setup logger
@@ -79,6 +80,102 @@ def get_args():
     parser.add_argument('--alpha', type=float, default=0.95, help='The strength of classification loss vs interpret loss')
     parser.add_argument('--grad_scale', type=float, default=1e5, help='Scaling up gradients to avoid uniform distribution for attention_interpret')
     return parser.parse_args()
+
+def perform_analysis(model, device, criterion, class_attention_grads, args, epoch, data_loader_stats, data_loader_plot):
+    for fbank, label in data_loader_stats:
+        fbank = fbank.to(device)
+        label = label.to(device)
+
+        logits, attention = model(fbank, return_attention=True)
+
+        classification_loss = criterion(logits, label)
+        logger.info(f'classification loss: {args.alpha * classification_loss.item()}')
+
+        label_indices = torch.argmax(label, dim=1)
+        selected_attention_grads = class_attention_grads[label_indices, ...]
+        selected_attention_grads = args.grad_scale * selected_attention_grads
+
+        attention_wo_cls = attention[:, :, :, 1:, 1:]
+        attention_wo_cls_softmaxed = attention_wo_cls.softmax(dim=-1)
+        grads_wo_cls = selected_attention_grads[:, :, :, 1:, 1:]
+
+        pre_attention_interpret = attention * selected_attention_grads
+        post_attention_interpret = pre_attention_interpret.softmax(dim=-1)
+        interpret_loss = -(post_attention_interpret.detach() * (attention + 1e-12).log()).sum(dim=-1).mean()
+        logger.info(f'interpret loss: {(1 - args.alpha) * interpret_loss.item()}')
+
+        # logger.info(
+        #     f"Attention stats:\n"
+        #     f"  shape: {attention.shape}\n"
+        #     f"  max: {attention.max().item()}\n"
+        #     f"  min: {attention.min().item()}\n"
+        #     f"  mean: {attention.mean().item()}\n"
+        #     f"  std: {attention.std().item()}"
+        # )
+        # logger.info(
+        #     f"Attention wo CLS stats:\n"
+        #     f"  shape: {attention_wo_cls.shape}\n"
+        #     f"  max: {attention_wo_cls.max().item()}\n"
+        #     f"  min: {attention_wo_cls.min().item()}\n"
+        #     f"  mean: {attention_wo_cls.mean().item()}\n"
+        #     f"  std: {attention_wo_cls.std().item()}"
+        # )
+        # logger.info(
+        #     f"Attention wo CLS softmaxed stats:\n"
+        #     f"  shape: {attention_wo_cls_softmaxed.shape}\n"
+        #     f"  max: {attention_wo_cls_softmaxed.max().item()}\n"
+        #     f"  min: {attention_wo_cls_softmaxed.min().item()}\n"
+        #     f"  mean: {attention_wo_cls_softmaxed.mean().item()}\n"
+        #     f"  std: {attention_wo_cls_softmaxed.std().item()}"
+        # )
+        # logger.info(
+        #     f"Selected Attention Grads stats:\n"
+        #     f"  shape: {selected_attention_grads.shape}\n"
+        #     f"  max: {selected_attention_grads.max().item()}\n"
+        #     f"  min: {selected_attention_grads.min().item()}\n"
+        #     f"  mean: {selected_attention_grads.mean().item()}\n"
+        #     f"  std: {selected_attention_grads.std().item()}"
+        # )
+        # logger.info(
+        #     f"Selected Attention Grads wo CLS stats:\n"
+        #     f"  shape: {grads_wo_cls.shape}\n"
+        #     f"  max: {grads_wo_cls.max().item()}\n"
+        #     f"  min: {grads_wo_cls.min().item()}\n"
+        #     f"  mean: {grads_wo_cls.mean().item()}\n"
+        #     f"  std: {grads_wo_cls.std().item()}"
+        # )
+        # logger.info(
+        #     f"Pre-Softmax Attention Interpret stats:\n"
+        #     f"  shape: {pre_attention_interpret.shape}\n"
+        #     f"  max: {pre_attention_interpret.max().item()}\n"
+        #     f"  min: {pre_attention_interpret.min().item()}\n"
+        #     f"  mean: {pre_attention_interpret.mean().item()}\n"
+        #     f"  std: {pre_attention_interpret.std().item()}"
+        # )
+        # logger.info(
+        #     f"Post-Softmax Attention Interpret stats:\n"
+        #     f"  shape: {post_attention_interpret.shape}\n"
+        #     f"  max: {post_attention_interpret.max().item()}\n"
+        #     f"  min: {post_attention_interpret.min().item()}\n"
+        #     f"  mean: {post_attention_interpret.mean().item()}\n"
+        #     f"  std: {post_attention_interpret.std().item()}"
+        # )
+
+        epoch_path = os.path.join(IMG_PATH, f"epoch_{epoch}")
+        os.makedirs(epoch_path, exist_ok=True)
+
+        heatmap_fig = plot_attention_heatmap(attention)
+        heatmap_fig.savefig(os.path.join(epoch_path, 'attention_heatmap.png'))
+        grads_heatmap_fig = plot_attention_heatmap(class_attention_grads)
+        grads_heatmap_fig.savefig(os.path.join(epoch_path, 'class_attention_grads_heatmap.png'))
+        attention_interpret_heatmap_fig = plot_attention_heatmap(post_attention_interpret)
+        attention_interpret_heatmap_fig.savefig(os.path.join(epoch_path, 'post_attention_interpret_heatmap.png'))
+
+        attention_cls_argmax_percentage = cls_argmax_percentage(attention)
+        logger.info(f"Attention Argmax Percentage for [CLS] token: {attention_cls_argmax_percentage}")
+
+        avg_received_attn_cls = avg_received_attention_cls(attention)
+        logger.info(f"Average Received Attention for [CLS] token: {avg_received_attn_cls}")
 
 def main():
     args = get_args()
@@ -142,6 +239,14 @@ def main():
         worker_init_fn=seed_worker,
         generator=g
     )
+
+    # Create stats and plot set used for debugging and statistics
+    stats_indices = random.sample(range(len(dataset_train)), 32)
+    stats_subset = Subset(dataset_train, stats_indices)
+    data_loader_stats = DataLoader(stats_subset, batch_size=32, shuffle=False)
+    plot_indices = random.sample(range(len(dataset_train)), 5)
+    plot_subset = Subset(dataset_train, plot_indices)
+    data_loader_plot = DataLoader(plot_subset, batch_size=5, shuffle=False)
 
     # Partition data to samples for each label
     dataset_interpret = UrbanDataset(
@@ -296,11 +401,6 @@ def main():
             # Calculate attention gradients
             class_attention_grads = attribute(model, class_loaders)
 
-            # Plot
-            # plot_attention(attention)
-            # plot_attention_heatmap(attention)
-            # plot_class_attention_grads(class_attention_grads)
-
             # Validation
             model.eval()
             total_val_loss = 0.0
@@ -342,10 +442,12 @@ def main():
             current_lr = scheduler.get_last_lr()
             logger.info(f"Current learning rate after step: {current_lr[0]:.6f}")
 
+            # Analysis
+            perform_analysis(model, device, criterion, class_attention_grads, args, epoch, data_loader_stats, data_loader_plot)
         else:
             # Training with interpretability loss
             model.train()
-            torch.autograd.set_detect_anomaly(True)
+            # torch.autograd.set_detect_anomaly(True)
 
             total_train_loss = 0.0
 
@@ -363,73 +465,24 @@ def main():
                     selected_attention_grads = class_attention_grads[label_indices, ...]
                     selected_attention_grads = args.grad_scale * selected_attention_grads
 
-                    attention_wo_cls = attention[:, :, :, 1:, 1:]
-                    attention_wo_cls = attention_wo_cls.softmax(dim=-1)
-                    grads_wo_cls = selected_attention_grads[:, :, :, 1:, 1:]
+                    # attention_wo_cls = attention[:, :, :, 1:, 1:]
+                    # attention_wo_cls_softmaxed = attention_wo_cls.softmax(dim=-1)
+                    # grads_wo_cls = selected_attention_grads[:, :, :, 1:, 1:]
 
-                    # Element wise mult
-                    pre_attention_interpret = attention_wo_cls * grads_wo_cls
-                    # Softmax to get distributions
+                    pre_attention_interpret = attention * selected_attention_grads
                     post_attention_interpret = pre_attention_interpret.softmax(dim=-1)
 
-                    interpret_loss = -(post_attention_interpret.detach() * (attention_wo_cls + 1e-12).log()).sum(dim=-1).mean()
+                    interpret_loss = -(post_attention_interpret.detach() * (attention + 1e-12).log()).sum(dim=-1).mean()
 
                     # loss = (args.alpha * classification_loss) + ((1 - args.alpha) * interpret_loss)
-                    loss = interpret_loss
-
-                    # logger.info(
-                    #     f"Attention stats:\n"
-                    #     f"  shape: {attention.shape}\n"
-                    #     f"  max: {attention.max().item()}\n"
-                    #     f"  min: {attention.min().item()}\n"
-                    #     f"  mean: {attention.mean().item()}\n"
-                    #     f"  std: {attention.std().item()}"
-                    # )
-                    # logger.info(
-                    #     f"Selected Attention Grads stats:\n"
-                    #     f"  shape: {selected_attention_grads.shape}\n"
-                    #     f"  max: {selected_attention_grads.max().item()}\n"
-                    #     f"  min: {selected_attention_grads.min().item()}\n"
-                    #     f"  mean: {selected_attention_grads.mean().item()}\n"
-                    #     f"  std: {selected_attention_grads.std().item()}"
-                    # )
-                    # logger.info(
-                    #     f"Pre-Softmax Attention Interpret stats:\n"
-                    #     f"  shape: {pre_attention_interpret.shape}\n"
-                    #     f"  max: {pre_attention_interpret.max().item()}\n"
-                    #     f"  min: {pre_attention_interpret.min().item()}\n"
-                    #     f"  mean: {pre_attention_interpret.mean().item()}\n"
-                    #     f"  std: {pre_attention_interpret.std().item()}"
-                    # )
-                    # logger.info(
-                    #     f"Post-Softmax Attention Interpret stats:\n"
-                    #     f"  shape: {post_attention_interpret.shape}\n"
-                    #     f"  max: {post_attention_interpret.max().item()}\n"
-                    #     f"  min: {post_attention_interpret.min().item()}\n"
-                    #     f"  mean: {post_attention_interpret.mean().item()}\n"
-                    #     f"  std: {post_attention_interpret.std().item()}"
-                    # )
+                    loss = classification_loss
 
                 scaler.scale(loss).backward()
-
-                # Print gradient stats
-                for name, param in model.named_parameters():
-                    if param.grad is not None:
-                        logger.info(f"{name} grad mean: {param.grad.abs().mean().item():.9e}")
-                    else:
-                        logger.info(f"{name} grad is None!")
-
-                # Visualize the graph (can be done on a small debug batch)
-                # dot = make_dot(loss, params=dict(model.named_parameters()))
-                # dot.render("my_debug_graph", format="pdf")
-
                 scaler.step(optimizer)
                 scaler.update()
 
                 total_train_loss += loss.item()
 
-            # logger.info(f'classification loss: {args.alpha * classification_loss.item()}')
-            logger.info(f'interpret loss: {(1 - args.alpha) * interpret_loss.item()}')
             epoch_loss = total_train_loss / len(data_loader_train)
 
             # Calculate attention gradients
@@ -476,6 +529,9 @@ def main():
             current_lr = scheduler.get_last_lr()
             logger.info(f"Current learning rate after step: {current_lr[0]:.6f}")
 
+            # Analysis
+            perform_analysis(model, device, criterion, class_attention_grads, args, epoch, data_loader_stats, data_loader_plot)
+
             # Save model every 10 epochs
             if (epoch + 1) % 10 == 0:
                 timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -496,4 +552,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-

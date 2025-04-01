@@ -1,11 +1,8 @@
 import numpy as np
 import torch
 import os
-from pathlib import Path
 import matplotlib.pyplot as plt
 
-
-PROJECT_ROOT = Path(__file__).parent.parent.absolute()
 
 def plot_class_attention_grads(class_attention_grads: torch.Tensor):
     avg_class = class_attention_grads.mean(dim=0)
@@ -22,7 +19,7 @@ def plot_class_attention_grads(class_attention_grads: torch.Tensor):
     plt.tight_layout()
 
     file_name = "class_attention_grads.png"
-    plt.savefig(os.path.join(PROJECT_ROOT, 'img', file_name))
+    # plt.savefig(os.path.join(PROJECT_ROOT, 'img', file_name))
     plt.close()
 
 def plot_attention(attention: torch.Tensor):
@@ -40,25 +37,47 @@ def plot_attention(attention: torch.Tensor):
     plt.tight_layout()
 
     file_name = "attention.png"
-    plt.savefig(os.path.join(PROJECT_ROOT, 'img', file_name))
+    # plt.savefig(os.path.join(PROJECT_ROOT, 'img', file_name))
     plt.close()
 
 def plot_attention_heatmap(attention: torch.Tensor):
     avg = attention.mean(dim=(0, 1, 2))
 
-    plt.figure(figsize=(15, 15))
-    plt.imshow(avg.cpu().detach().numpy(), cmap='hot')
-    plt.colorbar(label='Attention Weight')
+    fig, ax = plt.subplots(figsize=(15, 15))
+    cax = ax.imshow(avg.cpu().detach().numpy(), cmap='hot')
+    fig.colorbar(cax, ax=ax, label='Attention Weight')
 
-    ax = plt.gca()
     ax.xaxis.set_ticks_position('top')
     ax.xaxis.set_label_position('top')
 
-    plt.xlabel("Key Index")
-    plt.ylabel("Query Index")
-    plt.title("Attention Heatmap (averaged over batch/blocks/heads)")
-    plt.tight_layout()
+    ax.set_xlabel("Key Index")
+    ax.set_ylabel("Query Index")
+    ax.set_title("Attention Heatmap (averaged over batch/blocks/heads)")
+    fig.tight_layout()
 
-    file_name = "attention_heatmap.png"
-    plt.savefig(os.path.join(PROJECT_ROOT, 'img', file_name))
-    plt.close()
+    return fig
+
+def cls_argmax_percentage(tensor: torch.Tensor):
+    batch_size, num_blocks, num_heads, num_queries, _ = tensor.shape
+    total_queries = 0
+    cls_attention_count = 0
+
+    for sample in range(batch_size):
+        for block in range(num_blocks):
+            for head in range(num_heads):
+                # Shape: [num_queries, num_keys]
+                att = tensor[sample, block, head]
+
+                max_attended_keys = att.argmax(dim=1)
+
+                # Count how many queries in this matrix attend most to CLS (index 0)
+                cls_attention_count += (max_attended_keys == 0).sum().item()
+                total_queries += num_queries
+
+    percentage = cls_attention_count / total_queries
+    return percentage
+
+def avg_received_attention_cls(tensor: torch.Tensor):
+    avg = tensor.mean(dim=(0, 1, 2, 3))
+    avg_received_attn_cls = avg[0]
+    return avg_received_attn_cls
