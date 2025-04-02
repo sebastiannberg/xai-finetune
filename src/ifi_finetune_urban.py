@@ -474,8 +474,8 @@ def main():
 
                     interpret_loss = -(post_attention_interpret.detach() * (attention + 1e-12).log()).sum(dim=-1).mean()
 
-                    # loss = (args.alpha * classification_loss) + ((1 - args.alpha) * interpret_loss)
-                    loss = classification_loss
+                    loss = (args.alpha * classification_loss) + ((1 - args.alpha) * interpret_loss)
+                    # loss = classification_loss
 
                 scaler.scale(loss).backward()
                 scaler.step(optimizer)
