@@ -5,9 +5,14 @@ from tqdm import tqdm
 import os
 import matplotlib.pyplot as plt
 from pathlib import Path
+import time
 
 from utils import plot_attention_heatmap
 
+
+PROJECT_ROOT = Path(__file__).parent.parent.absolute()
+IMG_PATH = os.path.join(PROJECT_ROOT, 'img')
+os.makedirs(IMG_PATH, exist_ok=True)
 
 def _compute_gradients(model, inputs, class_idx):
     model.zero_grad()
@@ -33,6 +38,12 @@ def _compute_gradients(model, inputs, class_idx):
         all_grads = []
         for block in model.blocks:
             if hasattr(block.attn, 'attn') and block.attn.attn.grad is not None:
+                # TODO plot heatmap for a single sample attention grad
+                first_sample_grad = block.attn.attn.grad[0].detach().clone()
+                block_idx = len(all_grads)
+                fig = plot_attention_heatmap(first_sample_grad, title=f"Block {block_idx} - Single Sample Grad")
+                fig.savefig(os.path.join(IMG_PATH, f"{int(time.time())}.png"))
+                plt.close(fig)
                 # Sum across batch dimension
                 all_grads.append(block.attn.attn.grad.detach().clone().sum(dim=0))
             else:
@@ -81,12 +92,9 @@ def attribute(model: torch.nn.Module, class_loaders: List[torch.utils.data.DataL
 
             # Compute grads
             grads_sum = _compute_gradients(model, fbank, class_idx)
-            # TODO plot this as heatmap
-            PROJECT_ROOT = Path(__file__).parent.parent.absolute()
-            IMG_PATH = os.path.join(PROJECT_ROOT, 'img')
-            os.makedirs(IMG_PATH, exist_ok=True)
+
             fig = plot_attention_heatmap(grads_sum, title="grads_sum attention heatmap")
-            fig.savefig(os.path.join(IMG_PATH, "grads_sum_attention_heatmap.png"))
+            fig.savefig(os.path.join(IMG_PATH, f"{int(time.time())}.png"))
             plt.close(fig)
 
             if accum_grads is not None:
