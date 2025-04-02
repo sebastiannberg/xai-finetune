@@ -58,6 +58,7 @@ def plot_attention_heatmap(attention: torch.Tensor, title: str):
     ax.set_xlabel("Key Index")
     ax.set_ylabel("Query Index")
     ax.set_title(title)
+    ax.set_aspect("equal")
     fig.tight_layout()
 
     return fig
