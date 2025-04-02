@@ -16,6 +16,7 @@ import random
 import os
 from pathlib import Path
 from collections import defaultdict
+import matplotlib.pyplot as plt
 
 from dataset_urban import UrbanDataset
 import models_vit as models_vit
@@ -166,10 +167,15 @@ def perform_analysis(model, device, criterion, class_attention_grads, args, epoc
 
         heatmap_fig = plot_attention_heatmap(attention, title="Attention Heatmap")
         heatmap_fig.savefig(os.path.join(epoch_path, 'attention_heatmap.png'))
+        plt.close(heatmap_fig)
+
         grads_heatmap_fig = plot_attention_heatmap(class_attention_grads, title="Attentiong Gradient Heatmap")
         grads_heatmap_fig.savefig(os.path.join(epoch_path, 'class_attention_grads_heatmap.png'))
+        plt.close(grads_heatmap_fig)
+
         attention_interpret_heatmap_fig = plot_attention_heatmap(post_attention_interpret, title="Attention Interpret Heatmap")
         attention_interpret_heatmap_fig.savefig(os.path.join(epoch_path, 'post_attention_interpret_heatmap.png'))
+        plt.close(attention_interpret_heatmap_fig)
 
         attention_cls_argmax_percentage = cls_argmax_percentage(attention)
         logger.info(f"Attention Argmax Percentage for [CLS] token: {attention_cls_argmax_percentage}")
