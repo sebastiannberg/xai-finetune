@@ -42,11 +42,11 @@ def plot_attention(attention: torch.Tensor):
 def plot_attention_heatmap(attention: torch.Tensor, title: str):
     avg = attention.mean(dim=(0, 1, 2)).cpu().detach().numpy()
 
-    vmin = np.percentile(avg, 1)
-    vmax = np.percentile(avg, 99)
+    # vmin = np.percentile(avg, 1)
+    # vmax = np.percentile(avg, 99)
 
     fig, ax = plt.subplots(figsize=(10, 10))
-    im = ax.imshow(avg, cmap='hot', vmin=vmin, vmax=vmax)
+    im = ax.imshow(avg, cmap='hot')
 
     divider = make_axes_locatable(ax)
     cax = divider.append_axes("right", size="3%", pad=0.05)
