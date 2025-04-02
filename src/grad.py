@@ -60,7 +60,22 @@ def _compute_gradients(model, inputs, class_idx):
         # Result shape: (num_blocks, num_heads, seq_len, seq_len)
         stacked_grads = torch.stack(all_grads, dim=0)
         stacked_first_sample = torch.stack(first_sample_grads, dim=0)
-        print(stacked_first_sample.size())
+        # print(stacked_first_sample.size()) # (12, 12, 257, 257)
+        for block_idx in range(stacked_first_sample.shape[0]):
+            for head_idx in range(stacked_first_sample.shape[1]):
+                attn_map = stacked_first_sample[block_idx, head_idx]  # shape: (seq_len, seq_len)
+
+                title = f"Block {block_idx} - Head {head_idx} - Single Sample Grad"
+                fig = plot_attention_heatmap(attn_map, title=title)
+
+                filename = os.path.join(
+                    IMG_PATH, f"block{block_idx}_head{head_idx}_{int(time.time())}.png"
+                )
+                fig.savefig(filename)
+                plt.close(fig)
+
+                time.sleep(0.01)  # avoid timestamp collisions
+                raise ValueError("stop")
 
         # Remove retained gradients to clean up
         for block in model.blocks:
