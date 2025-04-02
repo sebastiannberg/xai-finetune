@@ -164,11 +164,11 @@ def perform_analysis(model, device, criterion, class_attention_grads, args, epoc
         epoch_path = os.path.join(IMG_PATH, f"epoch_{epoch}")
         os.makedirs(epoch_path, exist_ok=True)
 
-        heatmap_fig = plot_attention_heatmap(attention)
+        heatmap_fig = plot_attention_heatmap(attention, title="Attention Heatmap")
         heatmap_fig.savefig(os.path.join(epoch_path, 'attention_heatmap.png'))
-        grads_heatmap_fig = plot_attention_heatmap(class_attention_grads)
+        grads_heatmap_fig = plot_attention_heatmap(class_attention_grads, title="Attentiong Gradient Heatmap")
         grads_heatmap_fig.savefig(os.path.join(epoch_path, 'class_attention_grads_heatmap.png'))
-        attention_interpret_heatmap_fig = plot_attention_heatmap(post_attention_interpret)
+        attention_interpret_heatmap_fig = plot_attention_heatmap(post_attention_interpret, title="Attention Interpret Heatmap")
         attention_interpret_heatmap_fig.savefig(os.path.join(epoch_path, 'post_attention_interpret_heatmap.png'))
 
         attention_cls_argmax_percentage = cls_argmax_percentage(attention)

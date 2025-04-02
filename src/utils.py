@@ -1,8 +1,7 @@
 import numpy as np
 import torch
-import os
 import matplotlib.pyplot as plt
-
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 def plot_class_attention_grads(class_attention_grads: torch.Tensor):
     avg_class = class_attention_grads.mean(dim=0)
@@ -40,19 +39,25 @@ def plot_attention(attention: torch.Tensor):
     # plt.savefig(os.path.join(PROJECT_ROOT, 'img', file_name))
     plt.close()
 
-def plot_attention_heatmap(attention: torch.Tensor):
-    avg = attention.mean(dim=(0, 1, 2))
+def plot_attention_heatmap(attention: torch.Tensor, title: str):
+    avg = attention.mean(dim=(0, 1, 2)).cpu().detach().numpy()
 
-    fig, ax = plt.subplots(figsize=(15, 15))
-    cax = ax.imshow(avg.cpu().detach().numpy(), cmap='hot')
-    fig.colorbar(cax, ax=ax, label='Attention Weight')
+    vmin = np.percentile(avg, 1)
+    vmax = np.percentile(avg, 99)
+
+    fig, ax = plt.subplots(figsize=(10, 10))
+    im = ax.imshow(avg, cmap='hot', vmin=vmin, vmax=vmax)
+
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="3%", pad=0.05)
+    cbar = fig.colorbar(im, cax=cax)
+    cbar.set_label('Attention Weight')
 
     ax.xaxis.set_ticks_position('top')
     ax.xaxis.set_label_position('top')
-
     ax.set_xlabel("Key Index")
     ax.set_ylabel("Query Index")
-    ax.set_title("Attention Heatmap (averaged over batch/blocks/heads)")
+    ax.set_title(title)
     fig.tight_layout()
 
     return fig
