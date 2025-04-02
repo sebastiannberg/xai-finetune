@@ -2,6 +2,11 @@ import torch
 import torch.utils.data
 from typing import List
 from tqdm import tqdm
+import os
+import matplotlib.pyplot as plt
+from pathlib import Path
+
+from utils import plot_attention_heatmap
 
 
 def _compute_gradients(model, inputs, class_idx):
@@ -76,6 +81,13 @@ def attribute(model: torch.nn.Module, class_loaders: List[torch.utils.data.DataL
 
             # Compute grads
             grads_sum = _compute_gradients(model, fbank, class_idx)
+            # TODO plot this as heatmap
+            PROJECT_ROOT = Path(__file__).parent.parent.absolute()
+            IMG_PATH = os.path.join(PROJECT_ROOT, 'img')
+            os.makedirs(IMG_PATH, exist_ok=True)
+            fig = plot_attention_heatmap(grads_sum, title="grads_sum attention heatmap")
+            fig.savefig(os.path.join(IMG_PATH, "grads_sum_attention_heatmap.png"))
+            plt.close(fig)
 
             if accum_grads is not None:
                 accum_grads += grads_sum

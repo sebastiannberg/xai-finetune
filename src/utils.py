@@ -40,7 +40,10 @@ def plot_attention(attention: torch.Tensor):
     plt.close()
 
 def plot_attention_heatmap(attention: torch.Tensor, title: str):
-    avg = attention.mean(dim=(0, 1, 2)).cpu().detach().numpy()
+    while attention.ndim > 2:
+        attention = attention.mean(dim=0)
+    # avg = attention.mean(dim=(0, 1, 2)).cpu().detach().numpy()
+    avg = attention.cpu().detach().numpy()
 
     # vmin = np.percentile(avg, 1)
     # vmax = np.percentile(avg, 99)

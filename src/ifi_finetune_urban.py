@@ -96,9 +96,9 @@ def perform_analysis(model, device, criterion, class_attention_grads, args, epoc
         selected_attention_grads = class_attention_grads[label_indices, ...]
         selected_attention_grads = args.grad_scale * selected_attention_grads
 
-        attention_wo_cls = attention[:, :, :, 1:, 1:]
-        attention_wo_cls_softmaxed = attention_wo_cls.softmax(dim=-1)
-        grads_wo_cls = selected_attention_grads[:, :, :, 1:, 1:]
+        # attention_wo_cls = attention[:, :, :, 1:, 1:]
+        # attention_wo_cls_softmaxed = attention_wo_cls.softmax(dim=-1)
+        # grads_wo_cls = selected_attention_grads[:, :, :, 1:, 1:]
 
         pre_attention_interpret = attention * selected_attention_grads
         post_attention_interpret = pre_attention_interpret.softmax(dim=-1)
