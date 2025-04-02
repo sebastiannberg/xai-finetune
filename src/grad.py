@@ -36,16 +36,18 @@ def _compute_gradients(model, inputs, class_idx):
 
         # Collect attention grads
         all_grads = []
+        first_sample_grads = []
         for block in model.blocks:
             if hasattr(block.attn, 'attn') and block.attn.attn.grad is not None:
-                # TODO plot heatmap for a single sample attention grad
                 first_sample_grad = block.attn.attn.grad[0].detach().clone()
-                block_idx = len(all_grads)
-                fig = plot_attention_heatmap(first_sample_grad, title=f"Block {block_idx} - Single Sample Grad")
-                fig.savefig(os.path.join(IMG_PATH, f"{int(time.time())}.png"))
-                plt.close(fig)
+                # block_idx = len(all_grads)
+                # fig = plot_attention_heatmap(first_sample_grad, title=f"Block {block_idx} - Single Sample Grad")
+                # fig.savefig(os.path.join(IMG_PATH, f"{int(time.time())}.png"))
+                # plt.close(fig)
                 # Sum across batch dimension
                 all_grads.append(block.attn.attn.grad.detach().clone().sum(dim=0))
+
+                first_sample_grads.append(block.attn.attn.grad[0].detach().clone())
             else:
                 print(f"Warning: No gradients for block {block}")
                 # Add a placeholder of zeros with the same shape
@@ -57,6 +59,8 @@ def _compute_gradients(model, inputs, class_idx):
 
         # Result shape: (num_blocks, num_heads, seq_len, seq_len)
         stacked_grads = torch.stack(all_grads, dim=0)
+        stacked_first_sample = torch.stack(first_sample_grads, dim=0)
+        print(stacked_first_sample.size())
 
         # Remove retained gradients to clean up
         for block in model.blocks:
