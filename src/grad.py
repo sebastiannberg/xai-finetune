@@ -75,7 +75,7 @@ def _compute_gradients(model, inputs, class_idx):
                 plt.close(fig)
 
                 time.sleep(0.01)  # avoid timestamp collisions
-                raise ValueError("stop")
+        raise ValueError("stop")
 
         # Remove retained gradients to clean up
         for block in model.blocks:
