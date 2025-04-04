@@ -1,11 +1,12 @@
 import torch
 import torch.utils.data
+import torch.nn.functional as F
 from typing import List
 from tqdm import tqdm
 import os
 import matplotlib.pyplot as plt
 from pathlib import Path
-import time
+from datetime import datetime
 
 from utils import plot_attention_heatmap
 
@@ -16,6 +17,7 @@ os.makedirs(IMG_PATH, exist_ok=True)
 
 def _compute_gradients(model, inputs, class_idx):
     model.zero_grad()
+    print(inputs.size())
 
     with torch.autograd.set_grad_enabled(True):
         # Forward
@@ -39,7 +41,7 @@ def _compute_gradients(model, inputs, class_idx):
         first_sample_grads = []
         for block in model.blocks:
             if hasattr(block.attn, 'attn') and block.attn.attn.grad is not None:
-                first_sample_grad = block.attn.attn.grad[0].detach().clone()
+                # first_sample_grad = block.attn.attn.grad[0].detach().clone()
                 # block_idx = len(all_grads)
                 # fig = plot_attention_heatmap(first_sample_grad, title=f"Block {block_idx} - Single Sample Grad")
                 # fig.savefig(os.path.join(IMG_PATH, f"{int(time.time())}.png"))
@@ -61,20 +63,40 @@ def _compute_gradients(model, inputs, class_idx):
         stacked_grads = torch.stack(all_grads, dim=0)
         stacked_first_sample = torch.stack(first_sample_grads, dim=0)
         # print(stacked_first_sample.size()) # (12, 12, 257, 257)
+        orig_img = inputs[0]
+        orig_img = orig_img.detach().cpu().squeeze(0).transpose(0, 1).numpy()
+        timestamp = datetime.now().strftime('%m%d%H%M')
+
+        fig_orig, ax_orig = plt.subplots(figsize=(20, 5))
+        ax_orig.imshow(orig_img, cmap='gray', origin='lower', aspect='auto')
+        ax_orig.axis('off')
+        plt.tight_layout()
+
+        filename_orig = os.path.join(IMG_PATH, f"orig_{timestamp}.png")
+        fig_orig.savefig(filename_orig)
+        plt.close(fig_orig)
+
         for block_idx in range(stacked_first_sample.shape[0]):
-            for head_idx in range(stacked_first_sample.shape[1]):
-                attn_map = stacked_first_sample[block_idx, head_idx]  # shape: (seq_len, seq_len)
+            attn_map = stacked_first_sample[block_idx].mean(dim=0) # shape: (seq_len, seq_len)
+            attn_tensor = attn_map.unsqueeze(0).unsqueeze(0)  # shape: (1, 1, H, W)
+            attn_resized = F.interpolate(attn_tensor, size=(128, 512), mode='bilinear', align_corners=False)
+            attn_resized = attn_resized.squeeze().cpu().numpy()
+            attn_norm = (attn_resized - attn_resized.min()) / (attn_resized.max() - attn_resized.min() + 1e-8)
 
-                title = f"Block {block_idx} - Head {head_idx} - Single Sample Grad"
-                fig = plot_attention_heatmap(attn_map, title=title)
+            fig, ax = plt.subplots(figsize=(20, 5))
+            ax.imshow(orig_img, cmap='gray', origin='lower', aspect='auto')
+            ax.imshow(attn_norm, cmap='hot', alpha=0.2)
+            ax.axis('off')
+            plt.tight_layout()
+            filename = os.path.join(IMG_PATH, f"block{block_idx}_grad_heatmap_{timestamp}.png")
+            plt.savefig(filename)
+            plt.close(fig)
 
-                filename = os.path.join(
-                    IMG_PATH, f"block{block_idx}_head{head_idx}_{int(time.time())}.png"
-                )
-                fig.savefig(filename)
-                plt.close(fig)
+            fig = plot_attention_heatmap(attn_map, title=f"Block {block_idx} - Single Sample Grad")
+            filename = os.path.join(IMG_PATH, f"block{block_idx}_{timestamp}.png")
+            fig.savefig(filename)
+            plt.close(fig)
 
-                time.sleep(0.01)  # avoid timestamp collisions
         raise ValueError("stop")
 
         # Remove retained gradients to clean up

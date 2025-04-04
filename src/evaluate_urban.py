@@ -9,6 +9,7 @@ from pathlib import Path
 
 from dataset_urban import UrbanDataset
 import models_vit as models_vit
+from grad import _compute_gradients
 
 
 PROJECT_ROOT = Path(__file__).parent.parent.absolute()
@@ -66,6 +67,7 @@ def main():
     data_loader_val = DataLoader(
         dataset_val,
         batch_size=args.batch_size,
+        shuffle=False,
         drop_last=False
     )
 
@@ -104,18 +106,26 @@ def main():
     model.eval()
     all_preds = []
     all_labels = []
-    with torch.no_grad():
-        for fbank_val, label_val in data_loader_val:
-            fbank_val = fbank_val.to(device)
-            label_val = label_val.to(device)
+    # with torch.no_grad():
+    for fbank_val, label_val in data_loader_val:
+        first_sample, first_label = fbank_val[0], label_val[0]
+        # fbank_val = fbank_val.to(device)
+        # label_val = label_val.to(device)
 
-            logits_val = model(fbank_val)
+        sample = first_sample.to(device)
+        sample = sample[None, ...]
+        # sample.view(1, 1, -1, -1)
+        # sample.unsqueeze(0).unsqueeze(0)
+        label_int = first_label.argmax().item()
+        _compute_gradients(model=model, inputs=sample, class_idx=label_int)
 
-            preds = torch.argmax(logits_val, dim=1)
-            true_classes = torch.argmax(label_val, dim=1)
+        # logits_val = model(fbank_val)
 
-            all_preds.append(preds.cpu())
-            all_labels.append(true_classes.cpu())
+        # preds = torch.argmax(logits_val, dim=1)
+        # true_classes = torch.argmax(label_val, dim=1)
+
+        # all_preds.append(preds.cpu())
+        # all_labels.append(true_classes.cpu())
 
     all_preds = torch.cat(all_preds).numpy()
     all_labels = torch.cat(all_labels).numpy()
