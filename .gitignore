@@ -13,8 +13,7 @@ logs/
 img/
 *.png
 *.out
-
-# AudioMAE specific paths
+*.pth
 ckpt/
 
 # Other system-specific or IDE files
