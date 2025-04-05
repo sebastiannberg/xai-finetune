@@ -305,6 +305,11 @@ class ExperimentManager:
         total_time = time.time() - start_time
         self.logger.info(f'Total training time: {total_time / 60:.2f} minutes')
 
+    def save_experiment_summary(self):
+        summary = {
+            "timestamp": self.timestamp
+        }
+
     def run_experiment(self):
         self.logger.info("### Running experiment ###")
 
@@ -327,4 +332,6 @@ class ExperimentManager:
         self.setup_scaler()
 
         self.train_epochs()
+
+        self.save_experiment_summary()
         self.logger.info(f"Experiment finished")
