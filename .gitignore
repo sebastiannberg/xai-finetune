@@ -12,10 +12,13 @@ data/
 logs/
 img/
 *.png
-*.out
 *.pth
 ckpt/
 results/
+
+# Slurm
+scripts/
+*.out
 
 # Other system-specific or IDE files
 .DS_Store
