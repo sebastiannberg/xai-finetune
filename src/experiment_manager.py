@@ -48,7 +48,7 @@ class ExperimentManager:
 
         logging.basicConfig(
             level=logging.INFO,
-            format="%(asctime)s [%(levelname)s] - %(message)s"",
+            format="%(asctime)s [%(levelname)s] - %(message)s",
             datefmt="%Y-%m-%d %H:%M:%S",
             handlers=[
                 logging.FileHandler(os.path.join(self.log_dir, "experiment_manager.log"), mode="a")
@@ -234,6 +234,7 @@ class ExperimentManager:
                 epoch = epoch,
                 max_epoch = self.args.epochs
             )
+        return train_loss
 
     def validate(self):
         self.model.eval()
@@ -263,6 +264,8 @@ class ExperimentManager:
         val_accuracy = accuracy_score(all_labels, all_preds)
         val_f1 = f1_score(all_labels, all_preds, average="macro")
 
+        return val_loss, val_accuracy, val_f1
+
     def epoch_summary(self, epoch, train_loss, val_loss, val_accuracy, val_f1):
         self.logger.info("-"*40)
         self.logger.info(f"Epoch [{epoch+1}/{self.args.epochs}]")
@@ -276,10 +279,9 @@ class ExperimentManager:
         current_lr = self.scheduler.get_last_lr()
         self.logger.info(f"Current learning rate after step: {current_lr[0]:.6f}")
 
-    def save_model_ckpt(self, epoch):
+    def save_model_ckpt(self, epoch, val_loss, val_accuracy, val_f1):
         if (epoch + 1) % 10 == 0:
-            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            model_path = os.path.join(CKPT_PATH, f'epoch_{epoch+1}_{timestamp}.pth')
+            model_path = os.path.join(self.ckpt_dir, f"epoch_{epoch+1}.pth")
             torch.save({
                 'epoch': epoch + 1,
                 'model_state_dict': self.model.state_dict(),
@@ -293,11 +295,12 @@ class ExperimentManager:
 
     def train_epochs(self):
         start_time = time.time()
-        total_train_loss = 0.0
-        for epoch in tqdm(range(args.epochs), desc="Training Progress", leave=True, position=0):
-
-            epoch_loss = total_train_loss / len(data_loader_train)
-
+        for epoch in tqdm(range(self.args.epochs), desc="Training Progress", leave=True, position=0):
+            train_loss = self.train_one_epoch(epoch)
+            val_loss, val_accuracy, val_f1 = self.validate()
+            self.epoch_summary(epoch, train_loss, val_loss, val_accuracy, val_f1)
+            self.step_lr_scheduler()
+            self.save_model_ckpt(epoch, val_loss, val_accuracy, val_f1)
         total_time = time.time() - start_time
         self.logger.info(f'Total training time: {total_time / 60:.2f} minutes')
 

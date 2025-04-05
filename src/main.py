@@ -1,5 +1,4 @@
 import argparse
-import torch
 
 from experiment_manager import ExperimentManager
 

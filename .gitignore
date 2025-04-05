@@ -15,6 +15,7 @@ img/
 *.out
 *.pth
 ckpt/
+results/
 
 # Other system-specific or IDE files
 .DS_Store
