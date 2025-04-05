@@ -3,6 +3,7 @@ from datetime import datetime
 from pathlib import Path
 import logging
 import time
+import json
 import numpy as np
 import random
 import torch
@@ -302,13 +303,23 @@ class ExperimentManager:
             self.epoch_summary(epoch, train_loss, val_loss, val_accuracy, val_f1)
             self.step_lr_scheduler()
             self.save_model_ckpt(epoch, val_loss, val_accuracy, val_f1)
-        total_time = time.time() - start_time
-        self.logger.info(f'Total training time: {total_time / 60:.2f} minutes')
+        self.total_training_time = time.time() - start_time
+        self.logger.info(f'Total training time: {self.total_training_time / 60:.2f} minutes')
 
     def save_experiment_summary(self):
         summary = {
-            "timestamp": self.timestamp
+            "finished_at": datetime.now().strftime("%Y%m%d_%H%M%S"),
+            "total_training_time_minutes": self.total_training_time / 60,
+            "args": vars(self.args),
+            "final_train_loss": self.final_train_loss,
+            "final_val_loss": self.final_val_loss,
+            "final_val_accuracy": self.final_val_accuracy,
+            "final_val_f1": self.final_val_f1,
         }
+        summary_path = os.path.join(self.results_dir, "experiment_summary.json")
+        with open(summary_path, "w") as f:
+            json.dump(summary, f, indent=4)
+        self.logger.info(f"Experiment summary saved to {summary_path}")
 
     def run_experiment(self):
         self.logger.info("### Running experiment ###")
