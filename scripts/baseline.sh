@@ -8,6 +8,5 @@
 #SBATCH --mem=20G
 #SBATCH --time=01:00:00
 
-cd "$(dirname "$0")/.."
 source venv/bin/activate
 python src/main.py --mode baseline

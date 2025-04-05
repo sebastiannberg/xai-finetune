@@ -51,11 +51,12 @@ class ExperimentManager:
             format="%(asctime)s [%(levelname)s] - %(message)s",
             datefmt="%Y-%m-%d %H:%M:%S",
             handlers=[
-                logging.FileHandler(os.path.join(self.log_dir, "experiment_manager.log"), mode="a")
+                logging.FileHandler(os.path.join(self.log_dir, "experiment.log"), mode="a")
             ]
         )
         self.logger = logging.getLogger()
         self.logger.info("Logging is configured")
+        self.logger.info(f"Arguments: {self.args}")
         self.logger.info(f"Log directory: {self.log_dir}")
         self.logger.info(f"Project root: {self.project_root}")
         self.logger.info(f"Pretrained path: {self.pretrained_path}")
