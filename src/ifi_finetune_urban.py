@@ -1,4 +1,3 @@
-import argparse
 import time
 import numpy as np
 import torch
@@ -7,14 +6,12 @@ import torch.optim as optim
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader, Subset
 from torch.cuda.amp import autocast, GradScaler
-from timm.models.layers import to_2tuple, trunc_normal_
+from timm.models.layers import trunc_normal_
 from sklearn.metrics import accuracy_score, f1_score
 from tqdm import tqdm
-import logging
 import datetime
 import random
 import os
-from pathlib import Path
 from collections import defaultdict
 import matplotlib.pyplot as plt
 
@@ -22,65 +19,6 @@ from dataset_urban import UrbanDataset
 import models_vit as models_vit
 from grad import attribute
 from utils import cls_argmax_percentage, avg_received_attention_cls, plot_attention_heatmap
-
-# Setup paths
-PROJECT_ROOT = Path(__file__).parent.parent.absolute()
-CKPT_PATH = os.path.join(PROJECT_ROOT, 'ckpt')
-LOGS_PATH = os.path.join(PROJECT_ROOT, 'logs')
-IMG_PATH = os.path.join(PROJECT_ROOT, 'img', datetime.datetime.now().strftime('%Y_%m_%d_%H%M%S'))
-os.makedirs(IMG_PATH, exist_ok=True)
-URBAN_PATH = os.path.join(PROJECT_ROOT, 'data', 'UrbanSound8K')
-
-# Setup logger
-os.makedirs(LOGS_PATH, exist_ok=True)
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M',
-    handlers=[
-        logging.FileHandler(os.path.join(LOGS_PATH, 'finetune.log'), mode='a')
-    ]
-)
-logger = logging.getLogger()
-
-class PatchEmbed_new(nn.Module):
-
-    def __init__(self, img_size, patch_size, in_chans, embed_dim, stride):
-        super().__init__()
-        img_size = to_2tuple(img_size)
-        patch_size = to_2tuple(patch_size)
-        stride = to_2tuple(stride)
-        self.img_size = img_size
-        self.patch_size = patch_size
-
-        self.proj = nn.Conv2d(in_chans, embed_dim, kernel_size=patch_size, stride=stride)
-
-        _, _, h, w = self.get_output_shape(img_size)
-        self.patch_hw = (h, w)
-        self.num_patches = h * w
-
-    def get_output_shape(self, img_size):
-        return self.proj(torch.randn(1,1,img_size[0],img_size[1])).shape 
-
-    def forward(self, x):
-        x = self.proj(x)
-        x = x.flatten(2).transpose(1, 2)
-        return x
-
-def get_args():
-    parser = argparse.ArgumentParser(description='Finetune with IFI on UrbanSound8K dataset')
-    parser.add_argument('--epochs', type=int, default=60, help='Number of training epochs')
-    parser.add_argument('--lr', type=float, default=1e-4, help='Learning rate')
-    parser.add_argument('--weight_decay', type=float, default=5e-4, help='Weight decay for optimizer')
-    parser.add_argument('--num_classes', type=int, default=10, help='Number of target classes')
-    parser.add_argument('--target_length', type=int, default=512, help='Number of time frames for fbank')
-    parser.add_argument('--checkpoint', type=str, default='pretrained.pth', help='Filename for model checkpoint to load before fine-tuning')
-    parser.add_argument('--batch_size', type=int, default=32, help='Batch size for training and validation')
-    parser.add_argument('--num_workers', type=int, default=10, help='Number of worker threads for data loading')
-    parser.add_argument('--seed', type=int, default=0, help='To control the random seed for reproducibility')
-    parser.add_argument('--alpha', type=float, default=0.95, help='The strength of classification loss vs interpret loss')
-    parser.add_argument('--grad_scale', type=float, default=1e5, help='Scaling up gradients to avoid uniform distribution for attention_interpret')
-    return parser.parse_args()
 
 def perform_analysis(model, device, criterion, class_attention_grads, args, epoch, data_loader_stats, data_loader_plot):
     for fbank, label in data_loader_stats:
@@ -184,29 +122,6 @@ def perform_analysis(model, device, criterion, class_attention_grads, args, epoc
         logger.info(f"Average Received Attention for [CLS] token: {avg_received_attn_cls}")
 
 def main():
-    args = get_args()
-
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-    # Fix the seed for reproducibility
-    torch.manual_seed(args.seed)
-    torch.cuda.manual_seed_all(args.seed)
-    np.random.seed(args.seed)
-    random.seed(args.seed)
-
-    # Optimal settings for speed
-    torch.backends.cudnn.deterministic = False
-    torch.backends.cudnn.benchmark = True
-
-    # Reproducibility inside workers
-    def seed_worker(worker_id):
-        worker_seed = torch.initial_seed() % 2**32
-        np.random.seed(worker_seed)
-        random.seed(worker_seed)
-
-    g = torch.Generator()
-    g.manual_seed(args.seed)
-
     dataset_train = UrbanDataset(
         root=URBAN_PATH,
         fold=[1, 2, 3, 4, 5, 6, 7, 8, 9],

@@ -14,6 +14,7 @@ from functools import partial
 import torch
 import torch.nn as nn
 import timm.models.vision_transformer
+from timm.models.layers import to_2tuple, trunc_normal_
 
 
 class MyAttention(timm.models.vision_transformer.Attention):
@@ -66,6 +67,30 @@ class MyBlock(timm.models.vision_transformer.Block):
             x = x + self.drop_path(self.attn(self.norm1(x)))
             x = x + self.drop_path(self.mlp(self.norm2(x)))
             return x
+
+class PatchEmbed_new(nn.Module):
+
+    def __init__(self, img_size, patch_size, in_chans, embed_dim, stride):
+        super().__init__()
+        img_size = to_2tuple(img_size)
+        patch_size = to_2tuple(patch_size)
+        stride = to_2tuple(stride)
+        self.img_size = img_size
+        self.patch_size = patch_size
+
+        self.proj = nn.Conv2d(in_chans, embed_dim, kernel_size=patch_size, stride=stride)
+
+        _, _, h, w = self.get_output_shape(img_size)
+        self.patch_hw = (h, w)
+        self.num_patches = h * w
+
+    def get_output_shape(self, img_size):
+        return self.proj(torch.randn(1,1,img_size[0],img_size[1])).shape 
+
+    def forward(self, x):
+        x = self.proj(x)
+        x = x.flatten(2).transpose(1, 2)
+        return x
 
 class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
     """ Vision Transformer with support for global average pooling
