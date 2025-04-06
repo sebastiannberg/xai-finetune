@@ -74,6 +74,8 @@ class ExperimentManager:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.logger.info(f"Running on device: {self.device}")
 
+        self.class_attention_grads = None
+
         self.logger.info("Experiment manager initialized")
 
     def get_device(self):
