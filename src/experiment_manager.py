@@ -11,16 +11,17 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.cuda.amp import GradScaler
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
 from timm.models.layers import trunc_normal_
 from sklearn.metrics import accuracy_score, f1_score
+from collections import defaultdict
 from tqdm import tqdm
 
 import models_vit as models_vit
 from models_vit import PatchEmbed_new
 from urban_dataset import UrbanDataset
 from plots import Plots
-from methods import baseline_one_epoch
+from methods import baseline_one_epoch, ifi_one_epoch
 
 
 class ExperimentManager:
@@ -89,20 +90,44 @@ class ExperimentManager:
         torch.backends.cudnn.benchmark = benchmark
 
     def setup_dataset(self):
-        if self.args.mode == "baseline":
-            dataset_train = UrbanDataset(
+        dataset_train = UrbanDataset(
+            root=self.dataset_path,
+            fold=[1, 2, 3, 4, 5, 6, 7, 8, 9],
+            mixup_prob=0.5,
+            roll_mag_aug=True,
+            target_length=self.args.target_length,
+            freqm=48,
+            timem=192,
+            num_classes=self.args.num_classes
+        )
+        dataset_val = UrbanDataset(
+            root=self.dataset_path,
+            fold=[10],
+            mixup_prob=0.0,
+            roll_mag_aug=False,
+            target_length=self.args.target_length,
+            freqm=0,
+            timem=0,
+            num_classes=self.args.num_classes
+        )
+        self.data_loader_train = DataLoader(
+            dataset_train,
+            batch_size=self.args.batch_size,
+            num_workers=self.args.num_workers,
+            pin_memory=True,
+            drop_last=True
+        )
+        self.data_loader_val = DataLoader(
+            dataset_val,
+            batch_size=self.args.batch_size,
+            num_workers=self.args.num_workers,
+            pin_memory=True,
+            drop_last=False
+        )
+        if self.args.mode == "ifi":
+            dataset_interpret = UrbanDataset(
                 root=self.dataset_path,
                 fold=[1, 2, 3, 4, 5, 6, 7, 8, 9],
-                mixup_prob=0.5,
-                roll_mag_aug=True,
-                target_length=self.args.target_length,
-                freqm=48,
-                timem=192,
-                num_classes=self.args.num_classes
-            )
-            dataset_val = UrbanDataset(
-                root=self.dataset_path,
-                fold=[10],
                 mixup_prob=0.0,
                 roll_mag_aug=False,
                 target_length=self.args.target_length,
@@ -110,22 +135,25 @@ class ExperimentManager:
                 timem=0,
                 num_classes=self.args.num_classes
             )
-            self.data_loader_train = DataLoader(
-                dataset_train,
-                batch_size=self.args.batch_size,
-                num_workers=self.args.num_workers,
-                pin_memory=True,
-                drop_last=True
-            )
-            self.data_loader_val = DataLoader(
-                dataset_val,
-                batch_size=self.args.batch_size,
-                num_workers=self.args.num_workers,
-                pin_memory=True,
-                drop_last=False
-            )
-        if self.args.mode == "ifi":
-            pass
+            # Partition data to samples for each label
+            class_to_indices = defaultdict(list)
+            for idx in range(len(dataset_interpret)):
+                _, data_y = dataset_interpret[idx]
+                class_idx = data_y.argmax().item()
+                class_to_indices[class_idx].append(idx)
+            class_loaders = []
+            for class_idx in range(self.args.num_classes):
+                indices = class_to_indices[class_idx]
+                subset = Subset(dataset_interpret, indices)
+                loader = DataLoader(
+                    subset,
+                    batch_size=self.args.batch_size,
+                    num_workers=self.args.num_workers,
+                    pin_memory=True,
+                    drop_last=False
+                )
+                class_loaders.append(loader)
+            self.class_loaders = class_loaders
 
     def setup_model(self):
         model = models_vit.__dict__["vit_base_patch16"](
@@ -232,10 +260,27 @@ class ExperimentManager:
                 optimizer = self.optimizer,
                 criterion = self.criterion,
                 scaler = self.scaler,
-                data_loader_train = self.data_loader_train,
                 epoch = epoch,
-                max_epoch = self.args.epochs
+                max_epoch = self.args.epochs,
+                data_loader_train = self.data_loader_train
             )
+        elif self.args.mode == "ifi":
+            train_loss, class_attention_grads = ifi_one_epoch(
+                model = self.model,
+                device = self.device,
+                optimizer = self.optimizer,
+                criterion = self.criterion,
+                scaler = self.scaler,
+                epoch = epoch,
+                max_epoch = self.args.epochs,
+                data_loader_train = self.data_loader_train,
+                class_loaders = self.class_loaders,
+                grads_prev_epoch = self.class_attention_grads if self.class_attention_grads is not None else None,
+                grad_scale = self.args.grad_scale,
+                alpha = self.args.alpha,
+                logger = self.logger
+            )
+            self.class_attention_grads = class_attention_grads
         return train_loss
 
     def validate(self):
