@@ -15,10 +15,7 @@ import os
 from collections import defaultdict
 import matplotlib.pyplot as plt
 
-from dataset_urban import UrbanDataset
 import models_vit as models_vit
-from grad import attribute
-from utils import cls_argmax_percentage, avg_received_attention_cls, plot_attention_heatmap
 
 def perform_analysis(model, device, criterion, class_attention_grads, args, epoch, data_loader_stats, data_loader_plot):
     for fbank, label in data_loader_stats:

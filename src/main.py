@@ -17,10 +17,11 @@ def get_args():
     # Training args
     parser.add_argument("--epochs", type=int, default=60, help="Number of training epochs")
     parser.add_argument("--batch_size", type=int, default=32, help="Batch size in data loaders")
+    parser.add_argument("--seed", type=int, default=0, help="To control the random seed for reproducibility")
+    parser.add_argument("--save_frequency", type=int, default=20, help="Save a model ckpt every x epochs")
 
     # Data loader args
     parser.add_argument("--num_workers", type=int, default=10, help="Number of worker threads for data loading")
-    parser.add_argument("--seed", type=int, default=0, help="To control the random seed for reproducibility")
 
     # Hyperparameters
     parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate")

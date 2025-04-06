@@ -7,6 +7,7 @@ import models_vit as models_vit
 def baseline_one_epoch(model, device, optimizer, criterion, scaler, data_loader_train, epoch, max_epoch):
     model.train()
 
+    total_loss = 0.0
     for fbank, label in tqdm(data_loader_train, desc=f"Training [Epoch {epoch+1}/{max_epoch}]", leave=False, position=1):
         fbank = fbank.to(device)
         label = label.to(device)
@@ -21,7 +22,9 @@ def baseline_one_epoch(model, device, optimizer, criterion, scaler, data_loader_
         scaler.step(optimizer)
         scaler.update()
 
-    return loss.item()
+        total_loss += loss.item()
+
+    return total_loss / len(data_loader_train)
 
 def ifi_one_epoch():
     pass

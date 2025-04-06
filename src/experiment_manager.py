@@ -262,7 +262,7 @@ class ExperimentManager:
         all_preds = torch.cat(all_preds).numpy()
         all_labels = torch.cat(all_labels).numpy()
 
-        val_loss = total_loss / len(self.data_loader_val.dataset)
+        val_loss = total_loss / len(self.data_loader_val)
         val_accuracy = accuracy_score(all_labels, all_preds)
         val_f1 = f1_score(all_labels, all_preds, average="macro")
 
@@ -282,7 +282,7 @@ class ExperimentManager:
         self.logger.info(f"Current learning rate after step: {current_lr[0]:.6f}")
 
     def save_model_ckpt(self, epoch, val_loss, val_accuracy, val_f1):
-        if (epoch + 1) % 10 == 0:
+        if (epoch + 1) % self.args.save_frequency == 0:
             model_path = os.path.join(self.ckpt_dir, f"epoch_{epoch+1}.pth")
             torch.save({
                 'epoch': epoch + 1,
