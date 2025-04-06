@@ -303,6 +303,10 @@ class ExperimentManager:
             self.epoch_summary(epoch, train_loss, val_loss, val_accuracy, val_f1)
             self.step_lr_scheduler()
             self.save_model_ckpt(epoch, val_loss, val_accuracy, val_f1)
+        self.final_train_loss = train_loss
+        self.final_val_loss = val_loss
+        self.final_val_accuracy = val_accuracy
+        self.final_val_f1 = val_f1
         self.total_training_time = time.time() - start_time
         self.logger.info(f'Total training time: {self.total_training_time / 60:.2f} minutes')
 
@@ -345,4 +349,5 @@ class ExperimentManager:
         self.train_epochs()
 
         self.save_experiment_summary()
+
         self.logger.info(f"Experiment finished")
