@@ -34,7 +34,7 @@ class ExperimentManager:
         self.pretrained_path = os.path.join(self.project_root, "ckpt", "pretrained.pth")
         self.dataset_path = os.path.join(self.project_root, "data", "UrbanSound8K")
 
-        self.timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
 
         self.results_dir = os.path.join(self.project_root, "results", self.timestamp)
         os.makedirs(self.results_dir, exist_ok=True)
