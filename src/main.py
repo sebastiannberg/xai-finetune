@@ -31,6 +31,9 @@ def get_args():
     parser.add_argument("--alpha", type=float, default=0.95, help="The strength of classification loss vs interpret loss")
     parser.add_argument("--grad_scale", type=float, default=1e5, help="Scaling up gradients to avoid uniform distribution for attention_interpret")
 
+    # Slurm
+    parser.add_argument('--sbatch_script', type=str, default="unknown", help="Name of the sbatch script used to launch the job")
+
     return parser.parse_args()
 
 def main():

@@ -53,7 +53,7 @@ class ExperimentManager:
             format="%(asctime)s [%(levelname)s] - %(message)s",
             datefmt="%Y-%m-%d %H:%M:%S",
             handlers=[
-                logging.FileHandler(os.path.join(self.log_dir, "experiment.log"), mode="a")
+                logging.FileHandler(os.path.join(self.log_dir, "main.log"), mode="a")
             ]
         )
         self.logger = logging.getLogger()
@@ -359,15 +359,16 @@ class ExperimentManager:
 
     def save_experiment_summary(self):
         summary = {
+            "sbatch_script": self.args.sbatch_script,
+            "args": vars(self.args),
             "finished_at": datetime.now().strftime("%Y%m%d_%H%M%S"),
             "total_training_time_minutes": self.total_training_time / 60,
-            "args": vars(self.args),
             "final_train_loss": self.final_train_loss,
             "final_val_loss": self.final_val_loss,
             "final_val_accuracy": self.final_val_accuracy,
             "final_val_f1": self.final_val_f1,
         }
-        summary_path = os.path.join(self.results_dir, "experiment_summary.json")
+        summary_path = os.path.join(self.results_dir, "summary.json")
         with open(summary_path, "w") as f:
             json.dump(summary, f, indent=4)
         self.logger.info(f"Experiment summary saved to {summary_path}")
