@@ -272,7 +272,7 @@ class ExperimentManager:
         all_preds = []
         all_labels = []
         with torch.no_grad():
-            for fbank, label in tqdm(self.data_loader_val, desc="Validation", leave=False, position=1):
+            for fbank, label, _ in tqdm(self.data_loader_val, desc="Validation", leave=False, position=1):
                 fbank = fbank.to(self.device)
                 label = label.to(self.device)
 
