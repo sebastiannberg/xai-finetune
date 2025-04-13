@@ -71,7 +71,7 @@ class ExperimentManager:
         self.plotter = Plots(self.img_dir)
         self.logger.info("Plots class initialized")
 
-        self.watched_filenames = ["197318-6-7-0.wav", "138015-3-0-1.wav", "26270-9-0-30.wav"]
+        self.watched_filenames = {"197318-6-7-0.wav", "138015-3-0-1.wav", "26270-9-0-30.wav"}
         self.logger.info(f"Watching files: {self.watched_filenames}, this will be the basis for plots")
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -259,32 +259,9 @@ class ExperimentManager:
 
     def train_one_epoch(self, epoch):
         if self.args.mode == "baseline":
-            train_loss = baseline_one_epoch(
-                model = self.model,
-                device = self.device,
-                optimizer = self.optimizer,
-                criterion = self.criterion,
-                scaler = self.scaler,
-                epoch = epoch,
-                max_epoch = self.args.epochs,
-                data_loader_train = self.data_loader_train
-            )
+            train_loss = baseline_one_epoch(self, epoch)
         elif self.args.mode == "ifi":
-            train_loss, class_attention_grads = ifi_one_epoch(
-                model = self.model,
-                device = self.device,
-                optimizer = self.optimizer,
-                criterion = self.criterion,
-                scaler = self.scaler,
-                epoch = epoch,
-                max_epoch = self.args.epochs,
-                data_loader_train = self.data_loader_train,
-                class_loaders = self.class_loaders,
-                grads_prev_epoch = self.class_attention_grads if self.class_attention_grads is not None else None,
-                grad_scale = self.args.grad_scale,
-                alpha = self.args.alpha,
-                logger = self.logger
-            )
+            train_loss, class_attention_grads = ifi_one_epoch(self, epoch)
             self.class_attention_grads = class_attention_grads
         return train_loss
 

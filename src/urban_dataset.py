@@ -26,6 +26,10 @@ class UrbanDataset(Dataset):
         self.file_paths = self.metadata.apply(lambda row: os.path.join(root, 'audio', f"fold{row['fold']}", row['slice_file_name']), axis=1).tolist()
         self.labels = self.metadata['classID'].tolist()
 
+        self.filename_to_idx = {
+            os.path.basename(path): i for i, path in enumerate(self.file_paths)
+        }
+
         self.mean = -3.85
         self.std = 3.85
 
@@ -46,7 +50,7 @@ class UrbanDataset(Dataset):
             # No mixup, just process a single file
             fbank, label = self._wav_to_fbank(file_path, label, None, None)
 
-        return fbank, label
+        return fbank, label, file_path
 
     def _roll_mag_aug(self, waveform):
         """
@@ -147,3 +151,47 @@ class UrbanDataset(Dataset):
         label_one_hot = torch.FloatTensor(label_one_hot)
         return fbank.unsqueeze(0), label_one_hot
 
+    def get_item_by_filename(self, filename):
+        if filename not in self.filename_to_idx:
+            raise ValueError(f"Filename {filename} not found in dataset.")
+        idx = self.filename_to_idx[filename]
+
+        file_path = self.file_paths[idx]
+        label = self.labels[idx]
+
+        waveform, sr = torchaudio.load(file_path)
+        waveform = waveform.mean(dim=0, keepdim=True)
+        waveform = waveform - waveform.mean()
+
+        # Convert label to one-hot vector
+        label_one_hot = np.zeros(self.num_classes)
+        label_one_hot[label] = 1.0
+
+        # Convert waveform to log-mel spectrogram
+        fbank = torchaudio.compliance.kaldi.fbank(
+            waveform,
+            sample_frequency=sr,
+            use_energy=False,
+            htk_compat=True,
+            window_type='hanning',
+            num_mel_bins=128,
+            frame_shift=10,
+            dither=0.0
+        )
+
+        # Normalize
+        fbank = (fbank - self.mean) / self.std
+
+        # Pad or truncate
+        p = self.target_length - fbank.shape[0]
+        if p > 0:
+            # Padding
+            m = torch.nn.ZeroPad2d((0, 0, 0, p))
+            fbank = m(fbank)
+        elif p < 0:
+            # Cutting
+            fbank = fbank[0:self.target_length, :]
+
+        label_one_hot = torch.FloatTensor(label_one_hot)
+
+        return fbank.unsqueeze(0), label_one_hot, file_path

@@ -1,55 +1,61 @@
 import torch
 from torch.cuda.amp import autocast
 from tqdm import tqdm
-import torch.utils.data
-from typing import List
+from pathlib import Path
 
 import models_vit as models_vit
 
 
-def baseline_one_epoch(model, device, optimizer, criterion, scaler, epoch, max_epoch, data_loader_train):
-    model.train()
+def baseline_one_epoch(manager, epoch):
+    manager.model.train()
 
     total_loss = 0.0
-    for fbank, label in tqdm(data_loader_train, desc=f"Training [Epoch {epoch+1}/{max_epoch}]", leave=False, position=1):
-        fbank = fbank.to(device)
-        label = label.to(device)
+    for fbank, label, filepath in tqdm(manager.data_loader_train, desc=f"Training [Epoch {epoch+1}/{manager.args.epochs}]", leave=False, position=1):
+        fbank = fbank.to(manager.device)
+        label = label.to(manager.device)
 
-        optimizer.zero_grad()
+        manager.optimizer.zero_grad()
 
         with autocast():
-            logits = model(fbank)
-            loss = criterion(logits, label)
+            logits = manager.model(fbank)
+            loss = manager.criterion(logits, label)
 
-        scaler.scale(loss).backward()
-        scaler.step(optimizer)
-        scaler.update()
+        manager.scaler.scale(loss).backward()
+        manager.scaler.step(manager.optimizer)
+        manager.scaler.update()
 
         total_loss += loss.item()
 
-    return total_loss / len(data_loader_train)
+        for item in filepath:
+            base_name = Path(item).name
+            if base_name in manager.watched_filenames:
+                if epoch == 0:
+                    pure_fbank, _, _ = manager.data_loader_train.dataset.get_item_by_filename(base_name)
+                    manager.plotter.plot_spectrogram(pure_fbank[0].detach().cpu().squeeze(0).numpy().T, base_name)
 
-def ifi_one_epoch(model, device, optimizer, criterion, scaler, epoch, max_epoch, data_loader_train, class_loaders, grads_prev_epoch, grad_scale, alpha, logger):
-    model.train()
+    return total_loss / len(manager.data_loader_train)
+
+def ifi_one_epoch(manager, epoch):
+    manager.model.train()
     if epoch < 1:
         # Training without interpretability loss
-        train_loss = baseline_one_epoch(model, device, optimizer, criterion, scaler, epoch, max_epoch, data_loader_train)
+        train_loss = baseline_one_epoch(manager, epoch)
     else:
         # Training with interpretability loss
         total_loss = 0.0
-        for fbank, label in tqdm(data_loader_train, desc=f"Training [Epoch {epoch+1}/{max_epoch}]", leave=False, position=1):
-            fbank = fbank.to(device)
-            label = label.to(device)
+        for fbank, label in tqdm(manager.data_loader_train, desc=f"Training [Epoch {epoch+1}/{manager.args.epochs}]", leave=False, position=1):
+            fbank = fbank.to(manager.device)
+            label = label.to(manager.device)
 
-            optimizer.zero_grad()
+            manager.optimizer.zero_grad()
 
             with autocast():
-                logits, attention = model(fbank, return_attention=True)
-                classification_loss = criterion(logits, label)
+                logits, attention = manager.model(fbank, return_attention=True)
+                classification_loss = manager.criterion(logits, label)
 
                 label_indices = torch.argmax(label, dim=1)
-                selected_attention_grads = grads_prev_epoch[label_indices, ...]
-                selected_attention_grads = grad_scale * selected_attention_grads
+                selected_attention_grads = manager.grads_prev_epoch[label_indices, ...]
+                selected_attention_grads = manager.grad_scale * selected_attention_grads
 
                 # attention_wo_cls = attention[:, :, :, 1:, 1:]
                 # attention_wo_cls_softmaxed = attention_wo_cls.softmax(dim=-1)
@@ -61,36 +67,36 @@ def ifi_one_epoch(model, device, optimizer, criterion, scaler, epoch, max_epoch,
                 # Cross Entropy
                 interpret_loss = -(post_attention_interpret.detach() * (attention + 1e-12).log()).sum(dim=-1).mean()
 
-                loss = (alpha * classification_loss) + ((1 - alpha) * interpret_loss)
+                loss = (manager.alpha * classification_loss) + ((1 - manager.alpha) * interpret_loss)
                 # loss = classification_loss
 
-            scaler.scale(loss).backward()
-            scaler.step(optimizer)
-            scaler.update()
+            manager.scaler.scale(loss).backward()
+            manager.scaler.step(manager.optimizer)
+            manager.scaler.update()
 
             total_loss += loss.item()
 
-        train_loss = total_loss / len(data_loader_train)
+        train_loss = total_loss / len(manager.data_loader_train)
 
     # Calculate attention gradients
-    class_attention_grads = attribute(model, class_loaders, device, logger)
+    class_attention_grads = attribute(manager)
 
     return train_loss, class_attention_grads
 
 def et_one_epoch():
     pass
 
-def compute_gradients(model, inputs, class_idx, logger):
-    model.zero_grad()
+def compute_gradients(manager, inputs, class_idx):
+    manager.model.zero_grad()
 
     with torch.autograd.set_grad_enabled(True):
         # Forward
-        logits = model(inputs)  # shape: (batch_size, num_classes)
+        logits = manager.model(inputs)  # shape: (batch_size, num_classes)
         target_logits = logits[:, class_idx] # shape: (batch_size,)
         scalar_output = target_logits.sum()
 
         # Ensure 'retain_grad()' for each attention block before backprop
-        for block in model.blocks:
+        for block in manager.model.blocks:
             if hasattr(block.attn, 'attn') and block.attn.attn is not None:
                 if block.attn.attn.requires_grad:
                     block.attn.attn.retain_grad()
@@ -100,41 +106,41 @@ def compute_gradients(model, inputs, class_idx, logger):
 
         # Collect attention grads
         all_grads = []
-        for block in model.blocks:
+        for block in manager.model.blocks:
             if hasattr(block.attn, 'attn') and block.attn.attn.grad is not None:
                 all_grads.append(block.attn.attn.grad.detach().clone().sum(dim=0)) # Gradients are summed here along batch dim
             else:
-                logger.warning(f"Warning: No gradients for block {block}")
+                manager.logger.warning(f"Warning: No gradients for block {block}")
                 # Add a placeholder of zeros with the same shape
                 if len(all_grads) > 0:
                     all_grads.append(torch.zeros_like(all_grads[0]))
                 else:
-                    logger.error("No valid gradients found in any block")
+                    manager.logger.error("No valid gradients found in any block")
                     return None
 
         stacked_grads = torch.stack(all_grads, dim=0) # shape: (num_blocks, num_heads, seq_len, seq_len)
 
         # Remove retained gradients to clean up
-        for block in model.blocks:
+        for block in manager.model.blocks:
             if hasattr(block.attn, 'attn') and block.attn.attn is not None:
                 if block.attn.attn.grad is not None:
                     block.attn.attn.grad = None
-        model.zero_grad()
+        manager.model.zero_grad()
 
     return stacked_grads
 
-def attribute(model: torch.nn.Module, class_loaders: List[torch.utils.data.DataLoader], device, logger):
+def attribute(manager):
     # Freeze dropout and batch norm with model.eval()
-    model.eval()
+    manager.model.eval()
 
     class_grads = []
-    for class_idx, loader in tqdm(enumerate(class_loaders), desc="Attention Gradients", leave=False, total=len(class_loaders)):
+    for class_idx, loader in tqdm(enumerate(manager.class_loaders), desc="Attention Gradients", leave=False, total=len(manager.class_loaders)):
         accum_grads = None
         total_samples = 0
 
         for fbank, label in loader:
-            fbank = fbank.to(device)
-            label = label.to(device)
+            fbank = fbank.to(manager.device)
+            label = label.to(manager.device)
 
             # Ensure same label for all samples
             labels_int = label.argmax(dim=1)
@@ -143,7 +149,7 @@ def attribute(model: torch.nn.Module, class_loaders: List[torch.utils.data.DataL
                 f"Loader mismatch! Found labels {unique_labels.tolist()} but expected single class {class_idx}"
             )
 
-            grads_sum = compute_gradients(model, fbank, class_idx, logger)
+            grads_sum = compute_gradients(manager, fbank, class_idx)
 
             if accum_grads is not None:
                 accum_grads += grads_sum
