@@ -262,8 +262,7 @@ class ExperimentManager:
         if self.args.mode == "baseline":
             train_loss = baseline_one_epoch(self, epoch)
         elif self.args.mode == "ifi":
-            train_loss, class_attention_grads = ifi_one_epoch(self, epoch)
-            self.class_attention_grads = class_attention_grads
+            train_loss = ifi_one_epoch(self, epoch)
         return train_loss
 
     def validate(self):

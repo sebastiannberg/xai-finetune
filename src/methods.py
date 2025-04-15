@@ -80,8 +80,9 @@ def ifi_one_epoch(manager, epoch):
 
     # Calculate attention gradients
     class_attention_grads = attribute(manager)
+    manager.class_attention_grads = class_attention_grads
 
-    return train_loss, class_attention_grads
+    return train_loss
 
 def et_one_epoch():
     pass
