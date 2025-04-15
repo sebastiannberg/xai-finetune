@@ -2,6 +2,7 @@ import os
 import matplotlib.pyplot as plt
 # from mpl_toolkits.axes_grid1 import make_axes_locatable
 # from matplotlib import rcParams
+import numpy as np
 
 
 class Plots:
@@ -17,7 +18,7 @@ class Plots:
 
     def plot_loss_curve(self, train_loss_list, val_loss_list):
         epochs = range(1, len(train_loss_list) + 1)
-        plt.figure(figsize=(8, 6))
+        plt.figure(figsize=(10, 6))
         plt.plot(epochs, train_loss_list, label="Training Loss", color="blue", linewidth=2)
         plt.plot(epochs, val_loss_list, label="Validation Loss", color="orange", linewidth=2)
         plt.xlabel("Epoch")
@@ -29,7 +30,7 @@ class Plots:
 
     def plot_accuracy_f1_curve(self, acc_list, f1_list):
         epochs = range(1, len(acc_list) + 1)
-        plt.figure(figsize=(8, 6))
+        plt.figure(figsize=(10, 6))
         plt.plot(epochs, acc_list, label="Accuracy", color="blue", linewidth=2)
         plt.plot(epochs, f1_list, label="F1", color="orange", linewidth=2)
         plt.xlabel("Epoch")
@@ -91,94 +92,31 @@ class Plots:
         ax = plt.gca()
         ax.xaxis.set_ticks_position("top")
         ax.xaxis.set_label_position("top")
-        plt.title(f"{filename} - {mode.capitalize()} - Avg Over Blocks")
+        plt.title(f"{filename} - {mode.capitalize()} - All Blocks")
         plt.xlabel("Key Index")
         plt.ylabel("Query Index")
         plt.tight_layout()
         plt.savefig(os.path.join(epoch_dir, f"{filename_wo_ext}_block_all_{mode}_heatmap.png"), bbox_inches="tight")
         plt.close()
-
         # divider = make_axes_locatable(ax)
         # cax = divider.append_axes("right", size="3%", pad=0.05)
         # cbar = fig.colorbar(im, cax=cax)
         # cbar.set_label('Attention Weight')
 
-#     def stack_visualizations(self, case: Dict, visualization_methods: List[str]) -> Figure:
-#         fig, axs = plt.subplots(len(visualization_methods), 1, figsize=(20, 7 * len(visualization_methods)))
-#
-#         title_str = f"{case['method'].capitalize()}"
-#         title_str += f"\nClass: {case['explain_index_name']}    Probability: {round(float(case['probability']), 3):.3f}"
-#         if case["target_indices"] and self.config["targets_in_title"]:
-#             title_str += f"\nTargets: {case['target_names']}"
-#         fig.suptitle(title_str)
-#
-#         if len(visualization_methods) == 1:
-#             axs = [axs]
-#
-#         for idx, method_name in enumerate(visualization_methods):
-#             visualization_method = getattr(self, method_name)
-#             visualization_method(case, ax=axs[idx])
-#             axs[idx].set_xlabel("Time")
-#             axs[idx].set_ylabel("Frequency")
-#
-#         plt.subplots_adjust(hspace=0)
-#         plt.tight_layout()
-#         return fig
-#
-#     def _validate_shape(self, case: Dict) -> Tuple[NDArray, NDArray]:
-#         input_tensor = case["input_tensor"]
-#         input_tensor_np = np.squeeze(input_tensor.numpy()).T
-#         attributions = case["attributions"]
-#         attributions_np = np.squeeze(attributions.cpu().numpy()).T
-#         assert input_tensor_np.shape == attributions_np.shape
-#         return input_tensor_np, attributions_np
-#
-#     def original_image(self, case: Dict, ax: Axes) -> None:
-#         input_tensor_np, _ = self._validate_shape(case)
-#         im = ax.imshow(
-#             input_tensor_np,
-#             cmap=self.config["original_image_cmap"],
-#             origin='lower',
-#             interpolation='nearest',
-#             aspect='auto'
-#         )
-#         divider = make_axes_locatable(ax)
-#         cax = divider.append_axes("right", size="1%", pad=0.1)
-#         plt.colorbar(im, cax=cax)
-#
-#     def heatmap(self, case: Dict, ax: Axes) -> None:
-#         input_tensor_np, attributions_np = self._validate_shape(case)
-#
-#         if self.config["normalize"]:
-#             max_abs_attr = np.max(np.abs(attributions_np))
-#             max_abs_attr = max_abs_attr if max_abs_attr != 0 else 1e-10
-#             normalized_attributions = attributions_np / max_abs_attr
-#         else:
-#             normalized_attributions = attributions_np
-#
-#         alpha = self.config["alpha"]
-#
-#         ax.imshow(
-#             input_tensor_np,
-#             cmap='gray',
-#             origin='lower',
-#             interpolation='nearest',
-#             aspect='auto'
-#         )
-#
-#         im = ax.imshow(
-#             normalized_attributions,
-#             cmap=self.config["attributions_cmap"],
-#             origin='lower',
-#             interpolation='nearest',
-#             aspect='auto',
-#             alpha=alpha,
-#             vmin=-1,
-#             vmax=1
-#         )
-#         divider = make_axes_locatable(ax)
-#         cax = divider.append_axes("right", size="1%", pad=0.1)
-#         plt.colorbar(im, cax=cax)
+    def plot_avg_received_attention(self, attention, filename, epoch, mode="attention"):
+        filename_wo_ext = os.path.splitext(filename)[0]
+        epoch_dir = os.path.join(self.img_dir, f"epoch_{epoch}")
+        os.makedirs(epoch_dir, exist_ok=True)
+        # attention shape: (block, head, seq, seq)
+        avg_received_attention = attention.mean(axis=(0, 1, 2))
+        plt.figure(figsize=(10, 6))
+        plt.plot(np.arange(avg_received_attention.shape[0]), avg_received_attention)
+        plt.xlabel("Token Index")
+        plt.ylabel("Value")
+        plt.title(f"Average Received {mode.capitalize()} - All Blocks")
+        plt.tight_layout()
+        plt.savefig(os.path.join(epoch_dir, f"{filename_wo_ext}_average_received_{mode}.png"), bbox_inches="tight")
+        plt.close()
 
 # def plot_class_attention_grads(class_attention_grads: torch.Tensor):
 #     avg_class = class_attention_grads.mean(dim=0)
@@ -198,24 +136,7 @@ class Plots:
 #     # plt.savefig(os.path.join(PROJECT_ROOT, 'img', file_name))
 #     plt.close()
 #
-# def plot_attention(attention: torch.Tensor):
-#     avg_batch = attention.mean(dim=0)
-#     avg_block = avg_batch.mean(dim=0)
-#     avg_head = avg_block.mean(dim=0)
-#     avg_query = avg_head.mean(dim=0)
-#
-#     plt.figure(figsize=(10, 6))
-#     x_vals = np.arange(avg_query.size(0))
-#     plt.plot(x_vals, avg_query.cpu().detach().numpy())
-#     plt.xlabel("Token Index")
-#     plt.ylabel("Average Attention Value")
-#     plt.title("Average Attention (averaged over batch/blocks/heads/query)")
-#     plt.tight_layout()
-#
-#     file_name = "attention.png"
-#     # plt.savefig(os.path.join(PROJECT_ROOT, 'img', file_name))
-#     plt.close()
-#
+
 
 # def cls_argmax_percentage(tensor: torch.Tensor):
 #     batch_size, num_blocks, num_heads, num_queries, _ = tensor.shape

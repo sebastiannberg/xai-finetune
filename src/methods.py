@@ -33,6 +33,7 @@ def baseline_one_epoch(manager, epoch):
                     pure_fbank, _, _ = manager.data_loader_train.dataset.get_item_by_filename(base_name)
                     manager.plotter.plot_spectrogram(pure_fbank[0].detach().cpu().squeeze(0).numpy().T, base_name)
                 manager.plotter.plot_attention_heatmap(attention[idx].detach().cpu().numpy(), base_name, epoch)
+                manager.plotter.plot_avg_received_attention(attention[idx].detach().cpu().numpy(), base_name, epoch)
 
     return total_loss / len(manager.data_loader_train)
 
@@ -82,6 +83,8 @@ def ifi_one_epoch(manager, epoch):
                 if base_name in manager.watched_filenames:
                     manager.plotter.plot_attention_heatmap(attention[idx].detach().cpu().numpy(), base_name, epoch)
                     manager.plotter.plot_attention_heatmap(post_attention_interpret[idx].detach().cpu().numpy(), base_name, epoch, mode="attention_interpret")
+                    manager.plotter.plot_avg_received_attention(attention[idx].detach().cpu().numpy(), base_name, epoch)
+                    manager.plotter.plot_avg_received_attention(attention[idx].detach().cpu().numpy(), base_name, epoch, mode="attention_interpret")
 
         train_loss = total_loss / len(manager.data_loader_train)
 
