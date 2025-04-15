@@ -342,7 +342,6 @@ class ExperimentManager:
 
     def save_experiment_summary(self):
         summary = {
-            "sbatch_script": self.args.sbatch_script,
             "args": vars(self.args),
             "finished_at": datetime.now().strftime("%Y%m%d_%H%M%S"),
             "total_training_time_minutes": self.total_training_time / 60,
