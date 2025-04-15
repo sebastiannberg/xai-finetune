@@ -54,7 +54,7 @@ def ifi_one_epoch(manager, epoch):
                 classification_loss = manager.criterion(logits, label)
 
                 label_indices = torch.argmax(label, dim=1)
-                selected_attention_grads = manager.grads_prev_epoch[label_indices, ...]
+                selected_attention_grads = manager.class_attention_grads[label_indices, ...]
                 selected_attention_grads = manager.grad_scale * selected_attention_grads
 
                 # attention_wo_cls = attention[:, :, :, 1:, 1:]
