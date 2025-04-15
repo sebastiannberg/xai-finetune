@@ -335,6 +335,8 @@ class ExperimentManager:
         self.final_val_loss = val_loss
         self.final_val_accuracy = val_accuracy
         self.final_val_f1 = val_f1
+        self.best_val_accuracy = max(entry[2] for entry in self.epoch_metrics)
+        self.best_val_f1 = max(entry[3] for entry in self.epoch_metrics)
         self.total_training_time = time.time() - start_time
         self.logger.info(f'Total training time: {self.total_training_time / 60:.2f} minutes')
 
@@ -348,6 +350,8 @@ class ExperimentManager:
             "final_val_loss": self.final_val_loss,
             "final_val_accuracy": self.final_val_accuracy,
             "final_val_f1": self.final_val_f1,
+            "best_val_accuracy": self.best_val_accuracy,
+            "best_val_f1": self.best_val_f1,
         }
         summary_path = os.path.join(self.results_dir, "summary.json")
         with open(summary_path, "w") as f:
