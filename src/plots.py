@@ -57,7 +57,8 @@ class Plots:
         plt.savefig(os.path.join(self.img_dir, f"{filename_wo_ext}_spectrogram.png"), bbox_inches="tight")
         plt.close()
 
-    def plot_attention_heatmap(self, attention, filename, epoch):
+    def plot_attention_heatmap(self, attention, filename, epoch, mode="attention"):
+        # attention shape: (block, head, seq, seq)
         filename_wo_ext = os.path.splitext(filename)[0]
         epoch_dir = os.path.join(self.img_dir, f"epoch_{epoch}")
         os.makedirs(epoch_dir, exist_ok=True)
@@ -73,12 +74,29 @@ class Plots:
             ax = plt.gca()
             ax.xaxis.set_ticks_position("top")
             ax.xaxis.set_label_position("top")
-            plt.title(f"{filename} - Block {i}")
+            plt.title(f"{filename} - {mode.capitalize()} - Block {i}")
             plt.xlabel("Key Index")
             plt.ylabel("Query Index")
             plt.tight_layout()
-            plt.savefig(os.path.join(epoch_dir, f"{filename_wo_ext}_block_{i}_attention_heatmap.png"), bbox_inches="tight")
+            plt.savefig(os.path.join(epoch_dir, f"{filename_wo_ext}_block_{i}_{mode}_heatmap.png"), bbox_inches="tight")
             plt.close()
+
+        avg_blocks_attention = attention.mean(axis=(0, 1))
+        plt.figure(figsize=(10, 10))
+        plt.imshow(
+            avg_blocks_attention,
+            cmap="hot",
+            aspect="equal"
+        )
+        ax = plt.gca()
+        ax.xaxis.set_ticks_position("top")
+        ax.xaxis.set_label_position("top")
+        plt.title(f"{filename} - {mode.capitalize()} - Avg Over Blocks")
+        plt.xlabel("Key Index")
+        plt.ylabel("Query Index")
+        plt.tight_layout()
+        plt.savefig(os.path.join(epoch_dir, f"{filename_wo_ext}_block_all_{mode}_heatmap.png"), bbox_inches="tight")
+        plt.close()
 
         # divider = make_axes_locatable(ax)
         # cax = divider.append_axes("right", size="3%", pad=0.05)

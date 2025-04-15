@@ -44,7 +44,7 @@ def ifi_one_epoch(manager, epoch):
     else:
         # Training with interpretability loss
         total_loss = 0.0
-        for fbank, label, _ in tqdm(manager.data_loader_train, desc=f"Training [Epoch {epoch+1}/{manager.args.epochs}]", leave=False, position=1):
+        for fbank, label, filepath in tqdm(manager.data_loader_train, desc=f"Training [Epoch {epoch+1}/{manager.args.epochs}]", leave=False, position=1):
             fbank = fbank.to(manager.device)
             label = label.to(manager.device)
 
@@ -76,6 +76,12 @@ def ifi_one_epoch(manager, epoch):
             manager.scaler.update()
 
             total_loss += loss.item()
+
+            for idx, item in enumerate(filepath):
+                base_name = Path(item).name
+                if base_name in manager.watched_filenames:
+                    manager.plotter.plot_attention_heatmap(attention[idx].detach().cpu().numpy(), base_name, epoch)
+                    manager.plotter.plot_attention_heatmap(post_attention_interpret[idx].detach().cpu().numpy(), base_name, epoch, mode="attention_interpret")
 
         train_loss = total_loss / len(manager.data_loader_train)
 

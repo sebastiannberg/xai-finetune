@@ -71,7 +71,7 @@ class ExperimentManager:
         self.plotter = Plots(self.img_dir)
         self.logger.info("Plots class initialized")
 
-        self.watched_filenames = {"197318-6-7-0.wav", "138015-3-0-1.wav", "26270-9-0-30.wav"}
+        self.watched_filenames = {"197318-6-7-0.wav", "138015-3-0-1.wav", "26270-9-0-30.wav", "7389-1-0-1.wav", "16692-5-0-3.wav", "20688-2-0-0.wav", "14110-4-0-2.wav", "22883-7-7-0.wav", "24347-8-0-0.wav", "47160-0-0-4.wav"}
         self.logger.info(f"Watching files: {self.watched_filenames}, this will be the basis for plots")
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
