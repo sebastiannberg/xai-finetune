@@ -15,6 +15,29 @@ class Plots:
         #     'ytick.labelsize': 20,  # Y-axis tick label size
         # })
 
+    def plot_loss_curve(self, train_loss_list, val_loss_list):
+        epochs = range(1, len(train_loss_list) + 1)
+        plt.figure(figsize=(8, 6))
+        plt.plot(epochs, train_loss_list, label="Training Loss", color="blue", linewidth=2)
+        plt.plot(epochs, val_loss_list, label="Validation Loss", color="orange", linewidth=2)
+        plt.xlabel("Epoch")
+        plt.ylabel("Loss")
+        plt.legend()
+        plt.grid(True)
+        plt.savefig(os.path.join(self.img_dir, "loss_curve.png"))
+        plt.close()
+
+    def plot_accuracy_f1_curve(self, acc_list, f1_list):
+        epochs = range(1, len(acc_list) + 1)
+        plt.figure(figsize=(8, 6))
+        plt.plot(epochs, acc_list, label="Accuracy", color="blue", linewidth=2)
+        plt.plot(epochs, f1_list, label="F1", color="orange", linewidth=2)
+        plt.xlabel("Epoch")
+        plt.ylabel("Value")
+        plt.legend()
+        plt.grid(True)
+        plt.savefig(os.path.join(self.img_dir, "accuracy_f1_curve.png"))
+        plt.close()
 
     def plot_spectrogram(self, spectrogram, filename):
         plt.figure(figsize=(10, 3))
@@ -32,7 +55,7 @@ class Plots:
 
         filename_wo_ext = os.path.splitext(filename)[0]
         plt.savefig(os.path.join(self.img_dir, f"{filename_wo_ext}_spectrogram.png"), bbox_inches="tight")
-
+        plt.close()
 
 #     def stack_visualizations(self, case: Dict, visualization_methods: List[str]) -> Figure:
 #         fig, axs = plt.subplots(len(visualization_methods), 1, figsize=(20, 7 * len(visualization_methods)))

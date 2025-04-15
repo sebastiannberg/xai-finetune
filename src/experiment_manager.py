@@ -77,6 +77,7 @@ class ExperimentManager:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.logger.info(f"Running on device: {self.device}")
 
+        self.epoch_metrics = []
         self.class_attention_grads = None
 
         self.logger.info("Experiment manager initialized")
@@ -143,7 +144,7 @@ class ExperimentManager:
             # Partition data to samples for each label
             class_to_indices = defaultdict(list)
             for idx in range(len(dataset_interpret)):
-                _, data_y = dataset_interpret[idx]
+                _, data_y, _ = dataset_interpret[idx]
                 class_idx = data_y.argmax().item()
                 class_to_indices[class_idx].append(idx)
             class_loaders = []
@@ -327,6 +328,7 @@ class ExperimentManager:
         for epoch in tqdm(range(self.args.epochs), desc="Training Progress", leave=True, position=0):
             train_loss = self.train_one_epoch(epoch)
             val_loss, val_accuracy, val_f1 = self.validate()
+            self.epoch_metrics.append((train_loss, val_loss, val_accuracy, val_f1))
             self.epoch_summary(epoch, train_loss, val_loss, val_accuracy, val_f1)
             self.step_lr_scheduler()
             self.save_model_ckpt(epoch, val_loss, val_accuracy, val_f1)
@@ -353,6 +355,15 @@ class ExperimentManager:
             json.dump(summary, f, indent=4)
         self.logger.info(f"Experiment summary saved to {summary_path}")
 
+    def post_experiment_plots(self):
+        train_loss_list = [entry[0] for entry in self.epoch_metrics]
+        val_loss_list = [entry[1] for entry in self.epoch_metrics]
+        acc_list = [entry[2] for entry in self.epoch_metrics]
+        f1_list = [entry[3] for entry in self.epoch_metrics]
+
+        self.plotter.plot_loss_curve(train_loss_list, val_loss_list)
+        self.plotter.plot_accuracy_f1_curve(acc_list, f1_list)
+
     def run_experiment(self):
         self.logger.info("### Running experiment ###")
 
@@ -375,6 +386,8 @@ class ExperimentManager:
         self.setup_scaler()
 
         self.train_epochs()
+
+        self.post_experiment_plots()
 
         self.save_experiment_summary()
 
