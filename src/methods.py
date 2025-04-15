@@ -43,7 +43,7 @@ def ifi_one_epoch(manager, epoch):
     else:
         # Training with interpretability loss
         total_loss = 0.0
-        for fbank, label, label in tqdm(manager.data_loader_train, desc=f"Training [Epoch {epoch+1}/{manager.args.epochs}]", leave=False, position=1):
+        for fbank, label, _ in tqdm(manager.data_loader_train, desc=f"Training [Epoch {epoch+1}/{manager.args.epochs}]", leave=False, position=1):
             fbank = fbank.to(manager.device)
             label = label.to(manager.device)
 
