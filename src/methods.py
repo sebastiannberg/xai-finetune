@@ -17,7 +17,7 @@ def baseline_one_epoch(manager, epoch):
         manager.optimizer.zero_grad()
 
         with autocast():
-            logits = manager.model(fbank)
+            logits, attention = manager.model(fbank, return_attention=True)
             loss = manager.criterion(logits, label)
 
         manager.scaler.scale(loss).backward()
@@ -26,12 +26,13 @@ def baseline_one_epoch(manager, epoch):
 
         total_loss += loss.item()
 
-        for item in filepath:
+        for idx, item in enumerate(filepath):
             base_name = Path(item).name
             if base_name in manager.watched_filenames:
                 if epoch == 0:
                     pure_fbank, _, _ = manager.data_loader_train.dataset.get_item_by_filename(base_name)
                     manager.plotter.plot_spectrogram(pure_fbank[0].detach().cpu().squeeze(0).numpy().T, base_name)
+                manager.plotter.plot_attention_heatmap(attention[idx].detach().cpu().numpy(), base_name, epoch)
 
     return total_loss / len(manager.data_loader_train)
 

@@ -57,6 +57,34 @@ class Plots:
         plt.savefig(os.path.join(self.img_dir, f"{filename_wo_ext}_spectrogram.png"), bbox_inches="tight")
         plt.close()
 
+    def plot_attention_heatmap(self, attention, filename, epoch):
+        filename_wo_ext = os.path.splitext(filename)[0]
+        epoch_dir = os.path.join(self.img_dir, f"epoch_{epoch}")
+        os.makedirs(epoch_dir, exist_ok=True)
+
+        for i, block_attention in enumerate(attention):
+            avg_attention = block_attention.mean(axis=0)
+            plt.figure(figsize=(10, 10))
+            plt.imshow(
+                avg_attention,
+                cmap="hot",
+                aspect="equal"
+            )
+            ax = plt.gca()
+            ax.xaxis.set_ticks_position("top")
+            ax.xaxis.set_label_position("top")
+            plt.title(f"{filename} - Block {i}")
+            plt.xlabel("Key Index")
+            plt.ylabel("Query Index")
+            plt.tight_layout()
+            plt.savefig(os.path.join(epoch_dir, f"{filename_wo_ext}_block_{i}_attention_heatmap.png"), bbox_inches="tight")
+            plt.close()
+
+        # divider = make_axes_locatable(ax)
+        # cax = divider.append_axes("right", size="3%", pad=0.05)
+        # cbar = fig.colorbar(im, cax=cax)
+        # cbar.set_label('Attention Weight')
+
 #     def stack_visualizations(self, case: Dict, visualization_methods: List[str]) -> Figure:
 #         fig, axs = plt.subplots(len(visualization_methods), 1, figsize=(20, 7 * len(visualization_methods)))
 #
@@ -133,69 +161,6 @@ class Plots:
 #         divider = make_axes_locatable(ax)
 #         cax = divider.append_axes("right", size="1%", pad=0.1)
 #         plt.colorbar(im, cax=cax)
-#
-#     def percentile_heatmap(self, case: Dict, ax: Axes) -> None:
-#         input_tensor_np, attributions_np = self._validate_shape(case)
-#
-#         if self.config["normalize"]:
-#             max_abs_attr = np.max(np.abs(attributions_np))
-#             max_abs_attr = max_abs_attr if max_abs_attr != 0 else 1e-10
-#             normalized_attributions = attributions_np / max_abs_attr
-#         else:
-#             normalized_attributions = attributions_np
-#
-#         # Set alpha for the top percentile features only
-#         alpha = np.zeros_like(normalized_attributions)
-#         threshold = np.percentile(normalized_attributions, 90)
-#         mask = (normalized_attributions >= threshold)
-#         alpha[mask] = self.config["alpha"]
-#
-#         ax.imshow(
-#             input_tensor_np,
-#             cmap='gray',
-#             origin='lower',
-#             interpolation='nearest',
-#             aspect='auto'
-#         )
-#
-#         im = ax.imshow(
-#             normalized_attributions,
-#             cmap=self.config["attributions_cmap"],
-#             origin='lower',
-#             interpolation='nearest',
-#             aspect='auto',
-#             alpha=alpha,
-#             vmin=-1,
-#             vmax=1
-#         )
-#         divider = make_axes_locatable(ax)
-#         cax = divider.append_axes("right", size="1%", pad=0.1)
-#         plt.colorbar(im, cax=cax)
-#
-#     def attributions_isolated(self, case: Dict, ax: Axes) -> None:
-#         _, attributions_np = self._validate_shape(case)
-#
-#         if self.config["normalize"]:
-#             max_abs_attr = np.max(np.abs(attributions_np))
-#             max_abs_attr = max_abs_attr if max_abs_attr != 0 else 1e-10
-#             normalized_attributions = attributions_np / max_abs_attr
-#         else:
-#             normalized_attributions = attributions_np
-#
-#         im = ax.imshow(
-#             normalized_attributions,
-#             cmap=self.config["attributions_cmap"],
-#             origin='lower',
-#             interpolation='nearest',
-#             aspect='auto',
-#             vmin=-1,
-#             vmax=1
-#         )
-#         divider = make_axes_locatable(ax)
-#         cax = divider.append_axes("right", size="1%", pad=0.1)
-#         plt.colorbar(im, cax=cax)
-#
-#
 
 # def plot_class_attention_grads(class_attention_grads: torch.Tensor):
 #     avg_class = class_attention_grads.mean(dim=0)
@@ -233,33 +198,7 @@ class Plots:
 #     # plt.savefig(os.path.join(PROJECT_ROOT, 'img', file_name))
 #     plt.close()
 #
-# def plot_attention_heatmap(attention: torch.Tensor, title: str):
-#     while attention.ndim > 2:
-#         attention = attention.mean(dim=0)
-#     # avg = attention.mean(dim=(0, 1, 2)).cpu().detach().numpy()
-#     avg = attention.cpu().detach().numpy()
-#
-#     # vmin = np.percentile(avg, 1)
-#     # vmax = np.percentile(avg, 99)
-#
-#     fig, ax = plt.subplots(figsize=(10, 10))
-#     im = ax.imshow(avg, cmap='hot')
-#
-#     divider = make_axes_locatable(ax)
-#     cax = divider.append_axes("right", size="3%", pad=0.05)
-#     cbar = fig.colorbar(im, cax=cax)
-#     cbar.set_label('Attention Weight')
-#
-#     ax.xaxis.set_ticks_position('top')
-#     ax.xaxis.set_label_position('top')
-#     ax.set_xlabel("Key Index")
-#     ax.set_ylabel("Query Index")
-#     ax.set_title(title)
-#     ax.set_aspect("equal")
-#     fig.tight_layout()
-#
-#     return fig
-#
+
 # def cls_argmax_percentage(tensor: torch.Tensor):
 #     batch_size, num_blocks, num_heads, num_queries, _ = tensor.shape
 #     total_queries = 0
