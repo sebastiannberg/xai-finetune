@@ -86,12 +86,12 @@ def ifi_one_epoch(manager, epoch):
                         manager.plotter.plot_attention_heatmap(attention[idx].detach().cpu().numpy(), base_name, epoch)
                         manager.plotter.plot_attention_heatmap(post_attention_interpret[idx].detach().cpu().numpy(), base_name, epoch, mode="attention_interpret")
                         manager.plotter.plot_avg_received_attention(attention[idx].detach().cpu().numpy(), base_name, epoch)
-                        manager.plotter.plot_avg_received_attention(attention[idx].detach().cpu().numpy(), base_name, epoch, mode="attention_interpret")
+                        manager.plotter.plot_avg_received_attention(post_attention_interpret[idx].detach().cpu().numpy(), base_name, epoch, mode="attention_interpret")
 
         train_loss = total_loss / len(manager.data_loader_train)
 
     # Calculate attention gradients
-    class_attention_grads = attribute(manager)
+    class_attention_grads = attribute(manager, epoch)
     manager.class_attention_grads = class_attention_grads
 
     return train_loss
@@ -99,7 +99,7 @@ def ifi_one_epoch(manager, epoch):
 def et_one_epoch():
     pass
 
-def compute_gradients(manager, inputs, class_idx):
+def compute_gradients(manager, inputs, class_idx, filepath, epoch):
     manager.model.zero_grad()
 
     with torch.autograd.set_grad_enabled(True):
@@ -119,8 +119,15 @@ def compute_gradients(manager, inputs, class_idx):
 
         # Collect attention grads
         all_grads = []
-        for block in manager.model.blocks:
+        for i, block in enumerate(manager.model.blocks):
             if hasattr(block.attn, 'attn') and block.attn.attn.grad is not None:
+                # Plotting
+                for idx, item in enumerate(filepath):
+                    base_name = Path(item).name
+                    if base_name in manager.watched_filenames:
+                        if epoch + 1 in manager.plot_epochs:
+                            manager.plotter.plot_attention_gradient(block.attn.attn.grad[idx].detach().clone().cpu().numpy(), base_name, epoch, i)
+                # Sum and store in list for later return
                 all_grads.append(block.attn.attn.grad.detach().clone().sum(dim=0)) # Gradients are summed here along batch dim
             else:
                 manager.logger.warning(f"Warning: No gradients for block {block}")
@@ -142,7 +149,7 @@ def compute_gradients(manager, inputs, class_idx):
 
     return stacked_grads
 
-def attribute(manager):
+def attribute(manager, epoch):
     # Freeze dropout and batch norm with model.eval()
     manager.model.eval()
 
@@ -151,7 +158,7 @@ def attribute(manager):
         accum_grads = None
         total_samples = 0
 
-        for fbank, label, _ in loader:
+        for fbank, label, filepath in loader:
             fbank = fbank.to(manager.device)
             label = label.to(manager.device)
 
@@ -162,7 +169,7 @@ def attribute(manager):
                 f"Loader mismatch! Found labels {unique_labels.tolist()} but expected single class {class_idx}"
             )
 
-            grads_sum = compute_gradients(manager, fbank, class_idx)
+            grads_sum = compute_gradients(manager, fbank, class_idx, filepath, epoch)
 
             if accum_grads is not None:
                 accum_grads += grads_sum
