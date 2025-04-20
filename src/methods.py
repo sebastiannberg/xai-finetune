@@ -113,6 +113,7 @@ def compute_gradients(manager, inputs, class_idx, filepath, epoch):
             if hasattr(block.attn, 'attn') and block.attn.attn is not None:
                 if block.attn.attn.requires_grad:
                     block.attn.attn.retain_grad()
+                    block.attn.attn_pre_softmax.retain_grad()
 
         # Backprop
         scalar_output.backward()
