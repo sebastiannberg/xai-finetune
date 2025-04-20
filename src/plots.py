@@ -150,13 +150,17 @@ class Plots:
         plt.savefig(os.path.join(epoch_dir, f"{filename_wo_ext}_block_{block_idx}_attention_gradient_keys.png"), bbox_inches="tight")
         plt.close()
 
-    def plot_snr(self, snr_values, filename):
+    def plot_snr(self, snr_values, filename, mode="standard"):
         filename_wo_ext = os.path.splitext(filename)[0]
         plt.figure(figsize=(10, 6))
         plt.plot(range(len(snr_values)), snr_values)
         plt.xlabel("Epoch")
         plt.ylabel("SNR")
-        plt.title(f"{filename} - Attention Gradient SNR")
         plt.grid(True)
-        plt.savefig(os.path.join(self.img_dir, f"{filename_wo_ext}_attention_gradient_snr_curve.png"))
+        if mode == "standard":
+            plt.title(f"{filename} - Attention Gradient SNR")
+            plt.savefig(os.path.join(self.img_dir, f"{filename_wo_ext}_attention_gradient_snr_curve.png"))
+        elif mode == "pre":
+            plt.title(f"{filename} - Attention Gradient (Pre Softmax) SNR")
+            plt.savefig(os.path.join(self.img_dir, f"{filename_wo_ext}_attention_gradient_pre_softmax_snr_curve.png"))
         plt.close()

@@ -80,6 +80,7 @@ class ExperimentManager:
 
         self.epoch_metrics = []
         self.snr_values = {filename: [] for filename in self.watched_filenames}
+        self.snr_pre_values = {filename: [] for filename in self.watched_filenames}
         self.class_attention_grads = None
 
         self.logger.info("Experiment manager initialized")
@@ -367,10 +368,11 @@ class ExperimentManager:
         self.plotter.plot_loss_curve(train_loss_list, val_loss_list)
         self.plotter.plot_accuracy_f1_curve(acc_list, f1_list)
 
-        print(self.snr_values)
         for filename, snr_values in self.snr_values.items():
-            print(len(snr_values))
             self.plotter.plot_snr(snr_values, filename)
+
+        for filename, snr_values in self.snr_pre_values.items():
+            self.plotter.plot_snr(snr_values, filename, mode="pre")
 
     def run_experiment(self):
         self.logger.info("### Running experiment ###")

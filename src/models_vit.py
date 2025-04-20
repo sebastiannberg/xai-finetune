@@ -25,6 +25,7 @@ class MyAttention(timm.models.vision_transformer.Attention):
         q, k, v = qkv[0], qkv[1], qkv[2]   # make torchscript happy (cannot use tensor as tuple)
 
         attn = (q @ k.transpose(-2, -1)) * self.scale
+        self.attn_pre_softmax = attn
         attn = attn.softmax(dim=-1)
         self.attn = attn # save for grad calculations later
 

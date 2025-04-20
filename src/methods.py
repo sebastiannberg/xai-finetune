@@ -1,7 +1,6 @@
 import torch
 from torch.cuda.amp import autocast
 from tqdm import tqdm
-import numpy as np
 from pathlib import Path
 
 import models_vit as models_vit
@@ -121,6 +120,7 @@ def compute_gradients(manager, inputs, class_idx, filepath, epoch):
         # Collect attention grads
         all_grads = []
         tmp_snr = {Path(item).name: [] for item in filepath}
+        tmp_snr_pre = {Path(item).name: [] for item in filepath}
         for i, block in enumerate(manager.model.blocks):
             if hasattr(block.attn, 'attn') and block.attn.attn.grad is not None:
                 # Plotting
@@ -133,6 +133,14 @@ def compute_gradients(manager, inputs, class_idx, filepath, epoch):
                         std = grads_abs.std(unbiased=False) + 1e-12
                         snr_block = (mu / std).item()
                         tmp_snr[base_name].append(snr_block)
+
+                        grads_attn_pre_softmax = block.attn.attn_pre_softmax.grad[idx].detach().clone().cpu().abs()
+                        print(grads_attn_pre_softmax)
+                        mu_pre = grads_attn_pre_softmax.mean()
+                        std_pre = grads_attn_pre_softmax.std(unbiased=False) + 1e-12
+                        snr_pre_block = (mu_pre / std_pre).item()
+                        tmp_snr_pre[base_name].append(snr_pre_block)
+
                         if epoch + 1 in manager.plot_epochs:
                             manager.plotter.plot_attention_gradient(block.attn.attn.grad[idx].detach().clone().cpu().numpy(), base_name, epoch, i)
                 # Sum and store in list for later return
@@ -160,6 +168,10 @@ def compute_gradients(manager, inputs, class_idx, filepath, epoch):
             if snr_list:
                 epoch_snr = torch.tensor(snr_list).mean().item()
                 manager.snr_values[filename].append(epoch_snr)
+        for filename, snr_pre_list in tmp_snr_pre.items():
+            if snr_pre_list:
+                epoch_snr_pre = torch.tensor(snr_pre_list).mean().item()
+                manager.snr_pre_values[filename].append(epoch_snr_pre)
 
     return stacked_grads
 
