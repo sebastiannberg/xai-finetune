@@ -1,6 +1,7 @@
 import torch
 from torch.cuda.amp import autocast
 from tqdm import tqdm
+import numpy as np
 from pathlib import Path
 
 import models_vit as models_vit
@@ -119,12 +120,21 @@ def compute_gradients(manager, inputs, class_idx, filepath, epoch):
 
         # Collect attention grads
         all_grads = []
+        tmp_snr = {Path(item).name: [] for item in filepath}
         for i, block in enumerate(manager.model.blocks):
             if hasattr(block.attn, 'attn') and block.attn.attn.grad is not None:
                 # Plotting
                 for idx, item in enumerate(filepath):
                     base_name = Path(item).name
                     if base_name in manager.watched_filenames:
+                        # Calculate the SNR value of the attention gradient
+                        grads = block.attn.attn.grad[idx].detach().clone().cpu().numpy()
+                        grads_abs = np.abs(grads)
+                        mu = grads_abs.mean(axis=-1)
+                        std = grads_abs.std(axis=-1)
+                        std = np.where(std == 0, 1e-13, std) # avoid zero division
+                        snr_block = (mu / std).mean()
+                        tmp_snr[base_name].append(snr_block)
                         if epoch + 1 in manager.plot_epochs:
                             manager.plotter.plot_attention_gradient(block.attn.attn.grad[idx].detach().clone().cpu().numpy(), base_name, epoch, i)
                 # Sum and store in list for later return
@@ -146,6 +156,12 @@ def compute_gradients(manager, inputs, class_idx, filepath, epoch):
                 if block.attn.attn.grad is not None:
                     block.attn.attn.grad = None
         manager.model.zero_grad()
+
+        # Calculate SNR for epoch
+        for filename, snr_list in tmp_snr.items():
+            if snr_list:
+                epoch_snr = torch.tensor(snr_list).mean().item()
+                manager.snr_values[filename].append(epoch_snr)
 
     return stacked_grads
 
