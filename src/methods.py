@@ -128,12 +128,10 @@ def compute_gradients(manager, inputs, class_idx, filepath, epoch):
                     base_name = Path(item).name
                     if base_name in manager.watched_filenames:
                         # Calculate the SNR value of the attention gradient
-                        grads = block.attn.attn.grad[idx].detach().clone().cpu().numpy()
-                        grads_abs = np.abs(grads)
-                        mu = grads_abs.mean(axis=-1)
-                        std = grads_abs.std(axis=-1)
-                        std = np.where(std == 0, 1e-13, std) # avoid zero division
-                        snr_block = (mu / std).mean()
+                        grads_abs = block.attn.attn.grad[idx].detach().clone().cpu().abs()
+                        mu  = grads_abs.mean()
+                        std = grads_abs.std(unbiased=False) + 1e-12
+                        snr_block = (mu / std).item()
                         tmp_snr[base_name].append(snr_block)
                         if epoch + 1 in manager.plot_epochs:
                             manager.plotter.plot_attention_gradient(block.attn.attn.grad[idx].detach().clone().cpu().numpy(), base_name, epoch, i)
