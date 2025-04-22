@@ -141,7 +141,12 @@ def compute_gradients(manager, inputs, class_idx, filepath, epoch):
                         snr_pre_block = (mu_pre / std_pre).item()
                         tmp_snr_pre[base_name].append(snr_pre_block)
 
-                        if epoch + 1 in manager.plot_epochs:
+                        should_plot = False
+                        if isinstance(epoch, int) and (epoch + 1) in manager.plot_epochs:
+                            should_plot = True
+                        if epoch in ["noise_test"]:
+                            should_plot = True
+                        if should_plot:
                             manager.plotter.plot_attention_gradient(block.attn.attn.grad[idx].detach().clone().cpu().numpy(), base_name, epoch, i)
                 # Sum and store in list for later return
                 all_grads.append(block.attn.attn.grad.detach().clone().sum(dim=0)) # Gradients are summed here along batch dim

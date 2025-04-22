@@ -375,30 +375,37 @@ class ExperimentManager:
         for filename, snr_values in self.snr_pre_values.items():
             self.plotter.plot_snr(snr_values, filename, mode="pre")
 
+    def noise_spectrogram_test(self):
+        self.logger.info("Running noise spectrogram test")
+        n_samples = 4
+
+        real_fbank, _, _ = next(iter(self.data_loader_train))
+        _, C, T, F = real_fbank.shape
+
+        noise = torch.randn(n_samples, C, T, F, device=self.device)
+        fake_labels = torch.zeros(n_samples, self.args.num_classes, device=self.device)
+        fake_labels[:, 0] = 1 # Target does not matter because it is random noise
+
+        # Create a mockup class_loader
+        noise_keys = [f"noise_{i}" for i in range(n_samples)]
+        loader = [(noise, fake_labels, noise_keys)]
+        self.watched_filenames.update(noise_keys)
+
+        orig_class_loaders = self.class_loaders
+        self.class_loaders = [loader] # Only loader for class 0
+        attribute(self, epoch="noise_test") # Plots the attention grads
+
+        # Restore original class loaders
+        self.class_loaders = orig_class_loaders
+
+        pre_snr = np.mean([self.snr_pre_values[key] for key in noise_keys])
+        snr = np.mean([self.snr_values[key] for key in noise_keys])
+        self.logger.info(f"Pre Softmax SNR value for noise spectrogram test: {pre_snr}")
+        self.logger.info(f"Post Softmax SNR value for noise spectrogram test: {snr}")
+
     def post_experiment_analysis(self):
-        def noise_spectrogram_test(n_samples=self.args.batch_size):
-            self.logger.info("Running noise spectrogram tests")
-
-            real_fbank, _, _ = next(iter(self.data_loader_train))
-            print(real_fbank.shape)
-            B, C, T, F = real_fbank.shape
-
-            noise = torch.randn(n_samples, C, T, F, device=self.device)
-            fake_labels = torch.zeros(n_samples, self.args.num_classes, device=self.device)
-            fake_labels[:, 0] = 1 # Target does not matter because it is random noise
-
-            # Create a mockup class_loader
-            loader = [(noise, fake_labels, ["noise"]*n_samples)] # Filename "noise" NOTE: is not in watched filenames
-
-            orig_class_loaders = self.class_loaders
-            self.class_loaders = [loader] # Only loader for class 0
-            class_attention_grads = attribute(self, epoch="noise_test")
-
-            # Restore original class loaders
-            self.class_loader = orig_class_loaders
-
         if self.args.mode == "ifi":
-            noise_spectrogram_test()
+            self.noise_spectrogram_test()
 
     def run_experiment(self):
         self.logger.info("### Running experiment ###")
