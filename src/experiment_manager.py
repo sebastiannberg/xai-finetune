@@ -391,6 +391,10 @@ class ExperimentManager:
         loader = [(noise, fake_labels, noise_keys)]
         self.watched_filenames.update(noise_keys)
 
+        for k in noise_keys:
+            self.snr_values[k] = []
+            self.snr_pre_values[k] = []
+
         orig_class_loaders = self.class_loaders
         self.class_loaders = [loader] # Only loader for class 0
         attribute(self, epoch="noise_test") # Plots the attention grads
