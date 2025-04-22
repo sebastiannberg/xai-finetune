@@ -164,3 +164,25 @@ class Plots:
             plt.title(f"{filename} - Attention Gradient (Pre Softmax) SNR")
             plt.savefig(os.path.join(self.img_dir, f"{filename_wo_ext}_attention_gradient_pre_softmax_snr_curve.png"))
         plt.close()
+
+    def plot_pos_embed(self, pos_embed):
+        # pos_embed shape: (seq, emb)
+        fig, ax = plt.subplots(figsize=(10, 6))
+        im = ax.imshow(
+            pos_embed.T,
+            aspect="auto",
+            origin="lower",
+            cmap="seismic",
+            interpolation="nearest"
+        )
+
+        ax.set_xlabel("Token Index")
+        ax.set_ylabel("Embedding Dimension")
+        ax.set_title("Positional Embeddings")
+
+        divider = make_axes_locatable(ax)
+        cax = divider.append_axes("right", size="3%", pad=0.05)
+        fig.colorbar(im, cax=cax)
+
+        fig.savefig(os.path.join(self.img_dir, "positional_embeddings.png"), bbox_inches="tight")
+        plt.close(fig)

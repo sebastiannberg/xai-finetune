@@ -327,6 +327,7 @@ class ExperimentManager:
 
     def train_epochs(self):
         start_time = time.time()
+        self.plotter.plot_pos_embed(self.model.pos_embed[0].detach().cpu().squeeze(0).numpy())
         for epoch in tqdm(range(self.args.epochs), desc="Training Progress", leave=True, position=0):
             train_loss = self.train_one_epoch(epoch)
             val_loss, val_accuracy, val_f1 = self.validate()

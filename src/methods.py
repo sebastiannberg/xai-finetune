@@ -136,7 +136,6 @@ def compute_gradients(manager, inputs, class_idx, filepath, epoch):
                         tmp_snr[base_name].append(snr_block)
 
                         grads_attn_pre_softmax = block.attn.attn_pre_softmax.grad[idx].detach().clone().cpu().abs()
-                        print(grads_attn_pre_softmax)
                         mu_pre = grads_attn_pre_softmax.mean()
                         std_pre = grads_attn_pre_softmax.std(unbiased=False) + 1e-12
                         snr_pre_block = (mu_pre / std_pre).item()
