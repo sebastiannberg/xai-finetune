@@ -118,7 +118,7 @@ def compute_gradients(manager, inputs, class_idx, filepath, epoch):
         # Backprop
         scalar_output.backward()
 
-        # Collect attention grads
+        # Collect attention grads and plot
         all_grads = []
         tmp_snr = {Path(item).name: [] for item in filepath}
         tmp_snr_pre = {Path(item).name: [] for item in filepath}
@@ -127,7 +127,7 @@ def compute_gradients(manager, inputs, class_idx, filepath, epoch):
                 # Plotting
                 for idx, item in enumerate(filepath):
                     base_name = Path(item).name
-                    if base_name in manager.watched_filenames:
+                    if base_name in manager.watched_filenames or base_name in ["noise"]:
                         # Calculate the SNR value of the attention gradient
                         grads_abs = block.attn.attn.grad[idx].detach().clone().cpu().abs()
                         mu  = grads_abs.mean()

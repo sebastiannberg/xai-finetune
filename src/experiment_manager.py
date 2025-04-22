@@ -21,7 +21,7 @@ import models_vit as models_vit
 from models_vit import PatchEmbed_new
 from urban_dataset import UrbanDataset
 from plots import Plots
-from methods import baseline_one_epoch, ifi_one_epoch
+from methods import baseline_one_epoch, ifi_one_epoch, attribute
 
 
 class ExperimentManager:
@@ -375,6 +375,31 @@ class ExperimentManager:
         for filename, snr_values in self.snr_pre_values.items():
             self.plotter.plot_snr(snr_values, filename, mode="pre")
 
+    def post_experiment_analysis(self):
+        def noise_spectrogram_test(n_samples=self.args.batch_size):
+            self.logger.info("Running noise spectrogram tests")
+
+            real_fbank, _, _ = next(iter(self.data_loader_train))
+            print(real_fbank.shape)
+            B, C, T, F = real_fbank.shape
+
+            noise = torch.randn(n_samples, C, T, F, device=self.device)
+            fake_labels = torch.zeros(n_samples, self.args.num_classes, device=self.device)
+            fake_labels[:, 0] = 1 # Target does not matter because it is random noise
+
+            # Create a mockup class_loader
+            loader = [(noise, fake_labels, ["noise"]*n_samples)] # Filename "noise" NOTE: is not in watched filenames
+
+            orig_class_loaders = self.class_loaders
+            self.class_loaders = [loader] # Only loader for class 0
+            class_attention_grads = attribute(self, epoch="noise_test")
+
+            # Restore original class loaders
+            self.class_loader = orig_class_loaders
+
+        if self.args.mode == "ifi":
+            noise_spectrogram_test()
+
     def run_experiment(self):
         self.logger.info("### Running experiment ###")
 
@@ -399,6 +424,8 @@ class ExperimentManager:
         self.train_epochs()
 
         self.post_experiment_plots()
+
+        self.post_experiment_analysis()
 
         self.save_experiment_summary()
 
