@@ -58,7 +58,7 @@ def ifi_one_epoch(manager, epoch):
 
                 label_indices = torch.argmax(label, dim=1)
                 selected_attention_grads = manager.class_attention_grads[label_indices, ...]
-                selected_attention_grads = manager.args.grad_scale * selected_attention_grads
+                selected_attention_grads = selected_attention_grads / manager.args.temperature
 
                 # attention_wo_cls = attention[:, :, :, 1:, 1:]
                 # attention_wo_cls_softmaxed = attention_wo_cls.softmax(dim=-1)
@@ -71,7 +71,6 @@ def ifi_one_epoch(manager, epoch):
                 interpret_loss = -(post_attention_interpret.detach() * (attention + 1e-12).log()).sum(dim=-1).mean()
 
                 loss = (manager.args.alpha * classification_loss) + ((1 - manager.args.alpha) * interpret_loss)
-                # loss = classification_loss
 
             manager.scaler.scale(loss).backward()
             manager.scaler.step(manager.optimizer)
