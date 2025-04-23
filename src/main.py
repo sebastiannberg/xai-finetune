@@ -30,12 +30,15 @@ def get_args():
     # IFI
     parser.add_argument("--alpha", type=float, default=0.95, help="The strength of classification loss vs interpret loss")
     parser.add_argument("--temperature", type=float, default=1e-5, help="Scaling up gradients to avoid uniform distribution for attention_interpret")
+    parser.add_argument("--start_epoch", type=int, default=2, help="What epoch to start the interpretability loss")
+    parser.add_argument("--which_blocks", type=str, default="all", choices=["all", "first", "last"], help="What blocks to apply interpretability loss to")
+    parser.add_argument("--cls_deactivated", action="store_true", help="Should CLS token be included in interpretability loss")
 
     # Augmentation
     parser.add_argument("--mixup_prob", type=float, default=0.0, help="Probability of applying mixup data augmentation for a sample")
     parser.add_argument("--freqm", type=int, default=0, help="Frequency masking")
     parser.add_argument("--timem", type=int, default=0, help="Time masking")
-    parser.add_argument("--roll_mag_aug", type=bool, default=False, help="Applying time shift augmentation or not")
+    parser.add_argument("--roll_mag_aug", action="store_true", help="Applying time shift augmentation or not")
 
     # Slurm
     parser.add_argument('--sbatch_script', type=str, default="unknown", help="Name of the sbatch script used to launch the job")
