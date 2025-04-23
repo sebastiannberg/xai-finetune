@@ -31,6 +31,12 @@ def get_args():
     parser.add_argument("--alpha", type=float, default=0.95, help="The strength of classification loss vs interpret loss")
     parser.add_argument("--temperature", type=float, default=1e-5, help="Scaling up gradients to avoid uniform distribution for attention_interpret")
 
+    # Augmentation
+    parser.add_argument("--mixup_prob", type=float, default=0.0, help="Probability of applying mixup data augmentation for a sample")
+    parser.add_argument("--freqm", type=int, default=0, help="Frequency masking")
+    parser.add_argument("--timem", type=int, default=0, help="Time masking")
+    parser.add_argument("--roll_mag_aug", type=bool, default=False, help="Applying time shift augmentation or not")
+
     # Slurm
     parser.add_argument('--sbatch_script', type=str, default="unknown", help="Name of the sbatch script used to launch the job")
 

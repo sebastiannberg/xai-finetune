@@ -102,11 +102,11 @@ class ExperimentManager:
         dataset_train = UrbanDataset(
             root=self.dataset_path,
             fold=[1, 2, 3, 4, 5, 6, 7, 8, 9],
-            mixup_prob=0.5,
-            roll_mag_aug=True,
+            mixup_prob=self.args.mixup_prob,
+            roll_mag_aug=self.args.roll_mag_aug,
             target_length=self.args.target_length,
-            freqm=48,
-            timem=192,
+            freqm=self.args.freqm,
+            timem=self.args.timem,
             num_classes=self.args.num_classes
         )
         dataset_val = UrbanDataset(
@@ -137,11 +137,11 @@ class ExperimentManager:
             dataset_interpret = UrbanDataset(
                 root=self.dataset_path,
                 fold=[1, 2, 3, 4, 5, 6, 7, 8, 9],
-                mixup_prob=0.0,
-                roll_mag_aug=False,
+                mixup_prob=self.args.mixup_prob,
+                roll_mag_aug=self.args.roll_mag_aug,
                 target_length=self.args.target_length,
-                freqm=0,
-                timem=0,
+                freqm=self.args.freqm,
+                timem=self.args.timem,
                 num_classes=self.args.num_classes
             )
             # Partition data to samples for each label
