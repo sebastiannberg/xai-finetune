@@ -40,12 +40,14 @@ def baseline_one_epoch(manager, epoch):
 
 def ifi_one_epoch(manager, epoch):
     manager.model.train()
-    if epoch < 1:
+    if epoch < manager.args.start_epoch - 1:
         # Training without interpretability loss
+        manager.logger.info(f"Training without interpretability loss at epoch {epoch+1}")
         train_loss = baseline_one_epoch(manager, epoch)
     else:
         # Training with interpretability loss
         total_loss = 0.0
+        manager.logger.info(f"Training with interpretability loss at epoch {epoch+1}")
         for fbank, label, filepath in tqdm(manager.data_loader_train, desc=f"Training [Epoch {epoch+1}/{manager.args.epochs}]", leave=False, position=1):
             fbank = fbank.to(manager.device)
             label = label.to(manager.device)
@@ -60,16 +62,32 @@ def ifi_one_epoch(manager, epoch):
                 selected_attention_grads = manager.class_attention_grads[label_indices, ...]
                 selected_attention_grads = selected_attention_grads / manager.args.temperature
 
-                # attention_wo_cls = attention[:, :, :, 1:, 1:]
-                # attention_wo_cls_softmaxed = attention_wo_cls.softmax(dim=-1)
-                # grads_wo_cls = selected_attention_grads[:, :, :, 1:, 1:]
-
                 pre_attention_interpret = attention * selected_attention_grads
                 post_attention_interpret = pre_attention_interpret.softmax(dim=-1)
 
-                # Cross Entropy
-                interpret_loss = -(post_attention_interpret.detach() * (attention + 1e-12).log()).sum(dim=-1).mean()
+                # Select blocks
+                if manager.args.which_blocks == "all":
+                    attention_sel = attention
+                    attention_interpret_sel = post_attention_interpret
+                elif manager.args.which_blocks == "first":
+                    attention_sel = attention[:, :1, ...]
+                    attention_interpret_sel = post_attention_interpret[:, :1, ...]
+                elif manager.args.which_blocks == "last":
+                    attention_sel = attention[:, -1:, ...]
+                    attention_interpret_sel = post_attention_interpret[:, -1:, ...]
 
+                # Activate or deactivate cls token in interpretability loss
+                if manager.args.cls_deactivated:
+                    attention_sel = attention_sel.clone()
+                    attention_interpret_sel = attention_interpret_sel.clone()
+                    attention_sel[..., 0, :] = 0
+                    attention_sel[..., :, 0] = 0
+                    attention_interpret_sel[..., 0, :] = 0
+                    attention_interpret_sel[..., :, 0] = 0
+
+                # Compute interpretability loss (cross entropy) over selected blocks
+                interpret_loss = -(attention_interpret_sel.detach() * (attention_sel + 1e-12).log()).sum(dim=-1).mean()
+                # Total loss
                 loss = (manager.args.alpha * classification_loss) + ((1 - manager.args.alpha) * interpret_loss)
 
             manager.scaler.scale(loss).backward()
