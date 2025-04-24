@@ -369,11 +369,11 @@ class ExperimentManager:
         self.plotter.plot_loss_curve(train_loss_list, val_loss_list)
         self.plotter.plot_accuracy_f1_curve(acc_list, f1_list)
 
-        for filename, snr_values in self.snr_values.items():
-            self.plotter.plot_snr(snr_values, filename)
-
-        for filename, snr_values in self.snr_pre_values.items():
-            self.plotter.plot_snr(snr_values, filename, mode="pre")
+        if self.args.mode == "ifi":
+            for filename, snr_values in self.snr_values.items():
+                self.plotter.plot_snr(snr_values, filename)
+            for filename, snr_values in self.snr_pre_values.items():
+                self.plotter.plot_snr(snr_values, filename, mode="pre")
 
     def noise_spectrogram_test(self):
         self.logger.info("Running noise spectrogram test")
