@@ -29,6 +29,7 @@ def baseline_one_epoch(manager, epoch):
         for idx, item in enumerate(filepath):
             base_name = Path(item).name
             if base_name in manager.watched_filenames:
+                manager.epoch_metrics["avg_received_attn_cls"][epoch].append(attention[idx].detach().cpu().numpy().mean(axis=(0, 1, 2))[0])
                 if epoch == 0:
                     pure_fbank, _, _ = manager.data_loader_train.dataset.get_item_by_filename(base_name)
                     manager.plotter.plot_spectrogram(pure_fbank[0].detach().cpu().squeeze(0).numpy().T, base_name)
@@ -98,6 +99,8 @@ def ifi_one_epoch(manager, epoch):
 
             for idx, item in enumerate(filepath):
                 base_name = Path(item).name
+                manager.epoch_metrics["avg_received_attn_cls"][epoch].append(attention[idx].detach().cpu().numpy().mean(axis=(0, 1, 2))[0])
+                print("avg received attn cls" + str(manager.epoch_metrics['avg_received_attn_cls']))
                 if base_name in manager.watched_filenames:
                     if epoch + 1 in manager.plot_epochs:
                         manager.plotter.plot_attention_heatmap(attention[idx].detach().cpu().numpy(), base_name, epoch)

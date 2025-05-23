@@ -272,23 +272,18 @@ class ExperimentManager:
             train_loss = ifi_one_epoch(self, epoch)
         return train_loss
 
-    def validate(self, epoch):
+    def validate(self):
         self.model.eval()
 
         total_loss = 0.0
         all_preds = []
         all_labels = []
         with torch.no_grad():
-            for fbank, label, filepath in tqdm(self.data_loader_val, desc="Validation", leave=False, position=1):
+            for fbank, label, _ in tqdm(self.data_loader_val, desc="Validation", leave=False, position=1):
                 fbank = fbank.to(self.device)
                 label = label.to(self.device)
 
-                logits, attention = self.model(fbank, return_attention=True)
-                for idx, item in enumerate(filepath):
-                    base_name = Path(item).name
-                    if base_name in self.watched_filenames:
-                        self.epoch_metrics["avg_received_attn_cls"][epoch].append(attention[idx].detach().cpu().numpy().mean(axis=(0, 1, 2))[0])
-
+                logits = self.model(fbank, return_attention=True)
                 loss = self.criterion(logits, label)
                 total_loss += loss.item()
 
@@ -339,7 +334,7 @@ class ExperimentManager:
         self.plotter.plot_pos_embed(self.model.pos_embed[0].detach().cpu().squeeze(0).numpy())
         for epoch in tqdm(range(self.args.epochs), desc="Training Progress", leave=True, position=0):
             train_loss = self.train_one_epoch(epoch)
-            val_loss, val_accuracy, val_f1 = self.validate(epoch)
+            val_loss, val_accuracy, val_f1 = self.validate()
             self.epoch_metrics["loss"].append((train_loss, val_loss))
             self.epoch_metrics["metrics"].append((val_accuracy, val_f1))
             self.epoch_summary(epoch, train_loss, val_loss, val_accuracy, val_f1)
