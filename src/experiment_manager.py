@@ -283,7 +283,7 @@ class ExperimentManager:
                 fbank = fbank.to(self.device)
                 label = label.to(self.device)
 
-                logits = self.model(fbank, return_attention=True)
+                logits = self.model(fbank)
                 loss = self.criterion(logits, label)
                 total_loss += loss.item()
 
