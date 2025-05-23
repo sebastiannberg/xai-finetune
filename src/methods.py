@@ -100,7 +100,6 @@ def ifi_one_epoch(manager, epoch):
             for idx, item in enumerate(filepath):
                 base_name = Path(item).name
                 manager.epoch_metrics["avg_received_attn_cls"][epoch].append(attention[idx].detach().cpu().numpy().mean(axis=(0, 1, 2))[0])
-                print("avg received attn cls" + str(manager.epoch_metrics['avg_received_attn_cls']))
                 if base_name in manager.watched_filenames:
                     if epoch + 1 in manager.plot_epochs:
                         manager.plotter.plot_attention_heatmap(attention[idx].detach().cpu().numpy(), base_name, epoch)
