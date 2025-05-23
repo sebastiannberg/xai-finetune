@@ -43,11 +43,10 @@ class Plots:
     def plot_cls_attn_curve(self, cls_attn_list):
         epochs = range(len(cls_attn_list))
         plt.figure(figsize=(10, 6))
-        plt.plot(epochs, cls_attn_list, label="Accuracy", color="blue", linewidth=2)
+        plt.plot(epochs, cls_attn_list, color="blue", linewidth=2)
         plt.title(f"Average Received Attention for [CLS] Token - All Blocks")
         plt.xlabel("Epoch")
         plt.ylabel("Value")
-        plt.legend()
         plt.grid(True)
         plt.savefig(os.path.join(self.img_dir, "avg_received_attention_cls_epochs.png"))
         plt.close()
