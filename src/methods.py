@@ -61,10 +61,28 @@ def ifi_one_epoch(manager, epoch):
 
                 label_indices = torch.argmax(label, dim=1)
                 selected_attention_grads = manager.class_attention_grads[label_indices, ...]
-                selected_attention_grads = selected_attention_grads / manager.args.temperature
 
+                # Process gradients or target
                 pre_attention_interpret = attention * selected_attention_grads
+                if manager.args.grad_processing_mode == "temp_scaling":
+                    post_attention_interpret = pre_attention_interpret / manager.args.temperature
+                elif manager.args.grad_processing_mode == "relu":
+                    post_attention_interpret = torch.relu(pre_attention_interpret)
                 post_attention_interpret = pre_attention_interpret.softmax(dim=-1)
+
+                # Logger warning if nearly uniform
+                softmax_mean = post_attention_interpret.mean(dim=-1)
+                softmax_std = post_attention_interpret.std(dim=-1, unbiased=False)
+                global_mean = softmax_mean.mean().item()
+                global_std = softmax_std.mean().item()
+                global_min = post_attention_interpret.min().item()
+                global_max = post_attention_interpret.max().item()
+                if global_std < 1e-7:
+                    manager.logger.warning(
+                        f"attention_interpret (target) appears nearly uniform "
+                        f"(mean={global_mean:.5f}, std={global_std:.5e}, "
+                        f"min={global_min:.5e}, max={global_max:.5e})"
+                    )
 
                 # Select blocks
                 if manager.args.which_blocks == "all":

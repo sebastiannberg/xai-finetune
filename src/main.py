@@ -29,10 +29,17 @@ def get_args():
 
     # IFI
     parser.add_argument("--alpha", type=float, default=0.95, help="The strength of classification loss vs interpret loss")
-    parser.add_argument("--temperature", type=float, default=1e-5, help="Scaling up gradients to avoid uniform distribution for attention_interpret")
     parser.add_argument("--start_epoch", type=int, default=2, help="What epoch to start the interpretability loss")
     parser.add_argument("--which_blocks", type=str, default="all", choices=["all", "first", "last"], help="What blocks to apply interpretability loss to")
     parser.add_argument("--cls_deactivated", action="store_true", help="Should CLS token be included in interpretability loss")
+
+    parser.add_argument(
+        "--grad_processing_mode",
+        choices=["off", "temp_scaling", "relu"],
+        default="temp_scaling",
+        help="Choose how to process attention gradiets before softmax to avoid uniform distributions"
+    )
+    parser.add_argument("--temperature", type=float, default=1e-5, help="Scaling up gradients to avoid uniform distribution for attention_interpret")
 
     # Augmentation
     parser.add_argument("--mixup_prob", type=float, default=0.0, help="Probability of applying mixup data augmentation for a sample")
