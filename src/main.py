@@ -35,7 +35,7 @@ def get_args():
 
     parser.add_argument(
         "--grad_processing_mode",
-        choices=["off", "temp_scaling", "relu"],
+        choices=["off", "temp_scaling", "relu", "standardize"],
         default="temp_scaling",
         help="Choose how to process attention gradiets before softmax to avoid uniform distributions"
     )

@@ -68,7 +68,11 @@ def ifi_one_epoch(manager, epoch):
                     post_attention_interpret = pre_attention_interpret / manager.args.temperature
                 elif manager.args.grad_processing_mode == "relu":
                     post_attention_interpret = torch.relu(pre_attention_interpret)
-                post_attention_interpret = pre_attention_interpret.softmax(dim=-1)
+                elif manager.args.grad_processing_mode == "standardize":
+                    mean = pre_attention_interpret.mean(dim=-1, keepdim=True)
+                    std = pre_attention_interpret.std(dim=-1, keepdim=True, unbiased=False) + 1e-9
+                    post_attention_interpret = (pre_attention_interpret - mean) / std
+                post_attention_interpret = post_attention_interpret.softmax(dim=-1)
 
                 # Logger warning if nearly uniform
                 softmax_mean = post_attention_interpret.mean(dim=-1)
