@@ -35,11 +35,12 @@ def get_args():
 
     parser.add_argument(
         "--grad_processing_mode",
-        choices=["off", "temp_scaling", "relu", "standardize"],
+        choices=["off", "temp_scaling", "relu", "standardize", "percentile_clamping"],
         default="temp_scaling",
         help="Choose how to process attention gradiets before softmax to avoid uniform distributions"
     )
     parser.add_argument("--temperature", type=float, default=1e-5, help="Scaling up gradients to avoid uniform distribution for attention_interpret")
+    parser.add_argument("--percentile", type=float, default=0.2, help="Sparsification, zero out the percentile smallest values in target")
 
     # Augmentation
     parser.add_argument("--mixup_prob", type=float, default=0.0, help="Probability of applying mixup data augmentation for a sample")

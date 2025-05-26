@@ -73,6 +73,9 @@ def ifi_one_epoch(manager, epoch):
                     mean = pre_attention_interpret.mean(dim=-1, keepdim=True)
                     std = pre_attention_interpret.std(dim=-1, keepdim=True, unbiased=False) + 1e-9
                     post_attention_interpret = (pre_attention_interpret - mean) / std
+                elif manager.args.grad_processing_mode == "percentile_clamping":
+                    threshold = torch.quantile(pre_attention_interpret.abs(), q=manager.args.percentile, dim=-1, keepdim=True)
+                    post_attention_interpret = torch.where(pre_attention_interpret.abs() < threshold, torch.zeros_like(pre_attention_interpret), pre_attention_interpret)
                 post_attention_interpret = post_attention_interpret.softmax(dim=-1)
 
                 # Logger warning if nearly uniform
