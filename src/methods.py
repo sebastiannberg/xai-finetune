@@ -48,6 +48,7 @@ def ifi_one_epoch(manager, epoch):
     else:
         # Training with interpretability loss
         total_loss = 0.0
+        entropies = []
         manager.logger.info(f"Training with interpretability loss at epoch {epoch+1}")
         for fbank, label, filepath in tqdm(manager.data_loader_train, desc=f"Training [Epoch {epoch+1}/{manager.args.epochs}]", leave=False, position=1):
             fbank = fbank.to(manager.device)
@@ -108,6 +109,9 @@ def ifi_one_epoch(manager, epoch):
                     attention_interpret_sel[..., 0, :] = 0
                     attention_interpret_sel[..., :, 0] = 0
 
+                entropy = -(attention_interpret_sel.detach().clamp(min=1e-12) * attention_interpret_sel.detach().clamp(min=1e-12).log()).sum(dim=-1).mean().item()
+                entropies.append(entropy)
+
                 # Compute interpretability loss (cross entropy) over selected blocks
                 interpret_loss = -(attention_interpret_sel.detach() * (attention_sel + 1e-12).log()).sum(dim=-1).mean()
                 # Total loss
@@ -130,6 +134,9 @@ def ifi_one_epoch(manager, epoch):
                         manager.plotter.plot_avg_received_attention(post_attention_interpret[idx].detach().cpu().numpy(), base_name, epoch, mode="attention_interpret")
 
         train_loss = total_loss / len(manager.data_loader_train)
+
+    # Log the entropy for targets
+    manager.logger.info(f"Interpretability target entropy: {sum(entropies)/len(entropies):.5f}")
 
     # Calculate attention gradients
     class_attention_grads = attribute(manager, epoch)
