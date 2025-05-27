@@ -7,7 +7,7 @@ def get_args():
     parser = argparse.ArgumentParser(description="Finetune on UrbanSound8K dataset")
 
     # Mode
-    parser.add_argument("--mode", type=str, choices=["baseline", "ifi"], required=True, help="Choose experiment mode")
+    parser.add_argument("--mode", type=str, choices=["baseline", "ifi", "et"], required=True, help="Choose experiment mode")
 
     # Model args
     parser.add_argument("--checkpoint", type=str, default="pretrained.pth", help="Filename for model checkpoint to load before fine-tuning")
@@ -32,7 +32,6 @@ def get_args():
     parser.add_argument("--start_epoch", type=int, default=2, help="What epoch to start the interpretability loss")
     parser.add_argument("--which_blocks", type=str, default="all", choices=["all", "first", "last"], help="What blocks to apply interpretability loss to")
     parser.add_argument("--cls_deactivated", action="store_true", help="Should CLS token be included in interpretability loss")
-
     parser.add_argument(
         "--grad_processing_mode",
         choices=["off", "temp_scaling", "relu", "standardize", "percentile_clamping", "l1_amplification"],
@@ -42,6 +41,9 @@ def get_args():
     parser.add_argument("--temperature", type=float, default=1e-5, help="Scaling up gradients to avoid uniform distribution for attention_interpret")
     parser.add_argument("--percentile", type=float, default=0.2, help="Sparsification, zero out the percentile smallest values in target")
     parser.add_argument("--l1_lambda", type=float, default=0.5, help="Lambda value for L1 amplification to increase dynamic range")
+
+    # ET
+    parser.add_argument("--sigma_k", type=float, default=1.0, help="K-value for K-sigma thresholding")
 
     # Augmentation
     parser.add_argument("--mixup_prob", type=float, default=0.0, help="Probability of applying mixup data augmentation for a sample")

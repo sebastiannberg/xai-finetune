@@ -1,4 +1,5 @@
 import torch
+from torch import Tensor
 from torch.cuda.amp import autocast
 from tqdm import tqdm
 from pathlib import Path
@@ -149,8 +150,144 @@ def ifi_one_epoch(manager, epoch):
 
     return train_loss
 
-def et_one_epoch():
-    pass
+def compute_attention_rollout(raw_attention: Tensor, mode: str) -> Tensor:
+    """
+    Given the raw per-head attention weights from a Transformer,
+    returns the attention‐rollout map of shape [B, S, S] as in
+    Abnar & Zuidema (2020).
+
+    raw_attention[b, i, h] is the (S×S) attention from head h at layer i.
+    We:
+      1) avg over heads to get one [B, S, S] per layer
+      2) add the identity (0.5*I + 0.5*A) at every layer
+      3) recursively matmul shallow->deep
+
+    Parameters
+    ----------
+    raw_attention : Tensor
+        The raw attention weights of shape [batch_size, num_layers, num_heads, seq_length, seq_length].
+    mode : str
+        * "original"      — merge heads first then rollout with 0.5·I + 0.5·A at each layer;
+        * "head_rollout"  — rollout each head separately using 0.5·I + 0.5·A at each layer, then stack per-head maps.
+
+    Returns
+    -------
+    Tensor
+        If mode == "original": a Tensor of shape [batch_size, seq_length, seq_length] containing the merged-head rollout map.
+        If mode == "head_rollout": a Tensor of shape [batch_size, num_heads, seq_length, seq_length] containing one rollout map per head.
+    """
+    _, num_layers, num_heads, seq_length, _ = raw_attention.shape
+    identity = torch.eye(seq_length, device=raw_attention.device).unsqueeze(0) # [1, S, S]
+
+    if mode == "original":
+        # 1) Merge heads by averaging: one [B, S, S] per layer
+        merged_per_layer = []
+        for layer_idx in range(num_layers):
+            # raw_attention[:, layer_idx] is [B, H, S, S]
+            avg_attention = raw_attention[:, layer_idx].mean(dim=1) # [B, S, S]
+            merged_per_layer.append(avg_attention)
+
+        # 2) Rollout: start at layer 0 without residual
+        rollout_map = merged_per_layer[0]
+
+        # 3) For layers 1…L-1, do 0.5A + 0.5I then matmul
+        for layer_attention in merged_per_layer[1:]:
+            residual_attention = 0.5 * layer_attention + 0.5 * identity # [B, S, S]
+            rollout_map = torch.matmul(residual_attention, rollout_map) # [B, S, S]
+
+        return rollout_map
+
+    elif mode == "head_rollout":
+        # 1) For each head, build and rollout its own A_res = 0.5A + 0.5I
+        per_head_rollouts = []
+        for head_idx in range(num_heads):
+            # build per-layer residual-augmented matrices
+            per_layer_attention = []
+            for layer_idx in range(num_layers):
+                single_head_attention = raw_attention[:, layer_idx, head_idx]  # [B, S, S]
+                attention_with_residual = 0.5 * single_head_attention + 0.5 * identity
+                per_layer_attention.append(attention_with_residual)
+
+            # 2) shallow->deep product for this head
+            head_rollout = per_layer_attention[0]
+            for att_res in per_layer_attention[1:]:
+                head_rollout = torch.matmul(att_res, head_rollout)
+
+            per_head_rollouts.append(head_rollout)
+
+        # 3) stack into [batch_size, num_heads, seq_length, seq_length]
+        return torch.stack(per_head_rollouts, dim=1)
+
+    else:
+        raise ValueError(f"Unsupported mode {mode}")
+
+def k_sigma_thresholding(head_rollouts, sigma_k):
+    head_mean = head_rollouts.mean(dim=(-1, -2)) # -> (batch, head)
+    head_std  = head_rollouts.std(dim=(-1, -2), unbiased=False) # -> (batch, head)
+    threshold = head_mean + sigma_k * head_std # -> (batch, head)
+    binary_maps = (head_rollouts >= threshold.unsqueeze(-1).unsqueeze(-1)).float() # -> (batch, head, seq, seq)
+    return binary_maps, head_mean.unsqueeze(-1).unsqueeze(-1)
+
+def et_one_epoch(manager, epoch):
+    manager.model.train()
+    if epoch < manager.args.start_epoch - 1:
+        train_loss = baseline_one_epoch(manager, epoch)
+    else:
+        total_loss = 0.0
+        for fbank, label, filepath in tqdm(manager.data_loader_train, desc=f"Training [Epoch {epoch+1}/{manager.args.epochs}]", leave=False, position=1):
+            fbank = fbank.to(manager.device)
+            label = label.to(manager.device)
+
+            with autocast():
+                _, attention = manager.model(fbank, return_attention=True)
+            head_rollouts = compute_attention_rollout(attention, mode="head_rollout") # (batch, head, seq, seq)
+            binary_maps, map_weights = k_sigma_thresholding(head_rollouts, manager.args.sigma_k)
+            weighted_sum = (map_weights * binary_maps).sum(dim=1) # -> (batch, seq, seq)
+
+            mins = weighted_sum.amin(dim=(-1, -2), keepdim=True)
+            maxs = weighted_sum.amax(dim=(-1, -2), keepdim=True)
+            normalized_maps = (weighted_sum - mins) / (maxs - mins + 1e-10) # -> (batch, seq, seq)
+
+            patch_scores = normalized_maps[:, 0, 1:] # -> (batch, seq-1) only cls row, and drop cls column
+
+            h_patches, w_patches = manager.model.patch_embed.patch_hw
+            patch_grid = patch_scores.view(-1, 1, h_patches, w_patches) # -> (batch, 1, h_patches, w_patches)
+
+            h_img, w_img = manager.model.patch_embed.img_size
+            saliency_maps = torch.nn.functional.interpolate(patch_grid, size=(h_img, w_img), mode="bilinear") # -> (batch, 1, h_img, w_img)
+
+            saliency_mins = saliency_maps.amin(dim=(-1, -2), keepdim=True)
+            saliency_maxs = saliency_maps.amax(dim=(-1, -2), keepdim=True)
+            normalized_saliency_maps = (saliency_maps - saliency_mins) / (saliency_maxs - saliency_mins + 1e-10)
+
+            augmented_input = fbank * normalized_saliency_maps.detach()
+
+            manager.optimizer.zero_grad()
+            with autocast():
+                logits, attention = manager.model(augmented_input, return_attention=True)
+                loss = manager.criterion(logits, label)
+
+            manager.scaler.scale(loss).backward()
+            manager.scaler.step(manager.optimizer)
+            manager.scaler.update()
+
+            total_loss += loss.item()
+
+            # Plots
+            for idx, item in enumerate(filepath):
+                base_name = Path(item).name
+                if base_name in manager.watched_filenames:
+                    manager.epoch_metrics["avg_received_attn_cls"][epoch].append(attention[idx].detach().cpu().numpy().mean(axis=(0, 1, 2))[0])
+                    if epoch == 0:
+                        pure_fbank, _, _ = manager.data_loader_train.dataset.get_item_by_filename(base_name)
+                        manager.plotter.plot_spectrogram(pure_fbank[0].detach().cpu().squeeze(0).numpy().T, base_name)
+                    if epoch + 1 in manager.plot_epochs:
+                        manager.plotter.plot_attention_heatmap(attention[idx].detach().cpu().numpy(), base_name, epoch)
+                        manager.plotter.plot_avg_received_attention(attention[idx].detach().cpu().numpy(), base_name, epoch)
+
+        train_loss = total_loss / len(manager.data_loader_train)
+
+    return train_loss
 
 def compute_gradients(manager, inputs, class_idx, filepath, epoch):
     manager.model.zero_grad()

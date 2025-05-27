@@ -21,7 +21,7 @@ import models_vit as models_vit
 from models_vit import PatchEmbed_new
 from urban_dataset import UrbanDataset
 from plots import Plots
-from methods import baseline_one_epoch, ifi_one_epoch, attribute
+from methods import baseline_one_epoch, ifi_one_epoch, attribute, et_one_epoch
 
 
 class ExperimentManager:
@@ -270,6 +270,8 @@ class ExperimentManager:
             train_loss = baseline_one_epoch(self, epoch)
         elif self.args.mode == "ifi":
             train_loss = ifi_one_epoch(self, epoch)
+        elif self.args.mode == "et":
+            train_loss = et_one_epoch(self, epoch)
         return train_loss
 
     def validate(self):
