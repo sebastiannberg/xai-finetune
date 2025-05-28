@@ -309,6 +309,74 @@ def et_one_epoch(manager, epoch):
 
     return train_loss
 
+def et_one_epoch_reciprocam(manager, epoch):
+    if epoch < manager.args.start_epoch - 1:
+        train_loss = baseline_one_epoch(manager, epoch)
+    else:
+        total_loss = 0.0
+        for fbank, label, filepath in tqdm(manager.data_loader_train, desc=f"Training [Epoch {epoch+1}/{manager.args.epochs}]", leave=False, position=1):
+            fbank = fbank.to(manager.device)
+            label = label.to(manager.device)
+
+            with torch.no_grad():
+                cams = []
+                for i in range(fbank.size(0)):
+                    cam_i, _ = manager.vit_reciprocam(fbank[i:i+1])
+                    cams.append(cam_i)
+                cams = torch.stack(cams, dim=0)
+            print(cams.size())
+
+            h_img, w_img = manager.model.patch_embed.img_size
+            saliency_maps = torch.nn.functional.interpolate(cams.unsqueeze(1), size=(h_img, w_img), mode="bilinear") # -> (batch, 1, h_img, w_img)
+            saliency_mins = saliency_maps.amin(dim=(-1, -2), keepdim=True)
+            saliency_maxs = saliency_maps.amax(dim=(-1, -2), keepdim=True)
+            normalized_saliency_maps = (saliency_maps - saliency_mins) / (saliency_maxs - saliency_mins + 1e-10)
+
+            print(fbank.size())
+            print(normalized_saliency_maps.size())
+            print()
+            print()
+
+            # Gradually introduce explanations
+            progress = (epoch - manager.args.start_epoch) / (manager.args.epochs - manager.args.start_epoch)
+            alpha_saliency = min(max(progress, 0.0), 1.0)
+            augmented_input = fbank * (1 - alpha_saliency) + (fbank * normalized_saliency_maps.detach()) * alpha_saliency
+
+            manager.model.train()
+            manager.optimizer.zero_grad()
+            with autocast():
+                logits, attention = manager.model(augmented_input, return_attention=True)
+                loss = manager.criterion(logits, label)
+
+            manager.scaler.scale(loss).backward()
+            manager.scaler.step(manager.optimizer)
+            manager.scaler.update()
+
+            total_loss += loss.item()
+
+            # Plots
+            for idx, item in enumerate(filepath):
+                base_name = Path(item).name
+                if base_name in manager.watched_filenames:
+                    manager.epoch_metrics["avg_received_attn_cls"][epoch].append(attention[idx].detach().cpu().numpy().mean(axis=(0, 1, 2))[0])
+                    if epoch == 0:
+                        pure_fbank, _, _ = manager.data_loader_train.dataset.get_item_by_filename(base_name)
+                        manager.plotter.plot_spectrogram(pure_fbank[0].detach().cpu().squeeze(0).numpy().T, base_name)
+                    if epoch + 1 in manager.plot_epochs:
+                        manager.plotter.plot_saliency_map(normalized_saliency_maps[idx][0].detach().cpu().numpy().T, base_name, epoch)
+                        pure_fbank, _, _ = manager.data_loader_train.dataset.get_item_by_filename(base_name)
+                        manager.plotter.plot_heatmap(pure_fbank[0].detach().cpu().squeeze(0).numpy().T, normalized_saliency_maps[idx][0].detach().cpu().numpy().T, base_name, epoch)
+                        manager.plotter.plot_augmented_input(augmented_input[idx][0].detach().cpu().numpy().T, base_name, epoch)
+
+        # Log statistics
+        manager.logger.info(f"Average zero fraction in binary maps: {np.mean(zero_fracs):.4f}")
+        manager.logger.info(f"Average one fraction in binary maps: {1 - np.mean(zero_fracs):.4f}")
+        manager.logger.info(f"Average dynamic range in binary weighted sums: {np.mean(dynamic_ranges):.4f}")
+
+        train_loss = total_loss / len(manager.data_loader_train)
+
+    return train_loss
+
 def compute_gradients(manager, inputs, class_idx, filepath, epoch):
     manager.model.zero_grad()
 

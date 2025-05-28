@@ -7,7 +7,7 @@ def get_args():
     parser = argparse.ArgumentParser(description="Finetune on UrbanSound8K dataset")
 
     # Mode
-    parser.add_argument("--mode", type=str, choices=["baseline", "ifi", "et"], required=True, help="Choose experiment mode")
+    parser.add_argument("--mode", type=str, choices=["baseline", "ifi", "et", "et_reciprocam"], required=True, help="Choose experiment mode")
 
     # Model args
     parser.add_argument("--checkpoint", type=str, default="pretrained.pth", help="Filename for model checkpoint to load before fine-tuning")

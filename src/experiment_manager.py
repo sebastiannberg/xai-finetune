@@ -21,7 +21,8 @@ import models_vit as models_vit
 from models_vit import PatchEmbed_new
 from urban_dataset import UrbanDataset
 from plots import Plots
-from methods import baseline_one_epoch, ifi_one_epoch, attribute, et_one_epoch
+from methods import baseline_one_epoch, ifi_one_epoch, attribute, et_one_epoch, et_one_epoch_reciprocam
+from vit_recipro_cam import ViTReciproCam
 
 
 class ExperimentManager:
@@ -272,6 +273,9 @@ class ExperimentManager:
             train_loss = ifi_one_epoch(self, epoch)
         elif self.args.mode == "et":
             train_loss = et_one_epoch(self, epoch)
+        elif self.args.mode == "et_reciprocam":
+            self.vit_reciprocam = ViTReciproCam(self.model, self.device)
+            train_loss = et_one_epoch_reciprocam(self, epoch)
         return train_loss
 
     def validate(self):
