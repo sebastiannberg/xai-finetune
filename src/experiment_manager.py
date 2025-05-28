@@ -69,7 +69,7 @@ class ExperimentManager:
         self.logger.info("All directories created successfully")
 
         self.plotter = Plots(self.img_dir)
-        self.plot_epochs = [1, 5, 10, 20, 30, 40, 50, 60]
+        self.plot_epochs = [1, 10, 30, 50, 60]
         self.logger.info("Plots class initialized")
 
         self.watched_filenames = {"197318-6-7-0.wav", "138015-3-0-1.wav", "26270-9-0-30.wav", "7389-1-0-1.wav", "16692-5-0-3.wav", "20688-2-0-0.wav", "14110-4-0-2.wav", "22883-7-7-0.wav", "24347-8-0-0.wav", "47160-0-0-4.wav"}

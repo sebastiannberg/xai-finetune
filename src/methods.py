@@ -1,6 +1,7 @@
 import torch
 from torch import Tensor
 from torch.cuda.amp import autocast
+import numpy as np
 from tqdm import tqdm
 from pathlib import Path
 
@@ -234,6 +235,8 @@ def et_one_epoch(manager, epoch):
         train_loss = baseline_one_epoch(manager, epoch)
     else:
         total_loss = 0.0
+        zero_fracs = []
+        dynamic_ranges = []
         for fbank, label, filepath in tqdm(manager.data_loader_train, desc=f"Training [Epoch {epoch+1}/{manager.args.epochs}]", leave=False, position=1):
             fbank = fbank.to(manager.device)
             label = label.to(manager.device)
@@ -242,10 +245,17 @@ def et_one_epoch(manager, epoch):
                 _, attention = manager.model(fbank, return_attention=True)
             head_rollouts = compute_attention_rollout(attention, mode="head_rollout") # (batch, head, seq, seq)
             binary_maps, map_weights = k_sigma_thresholding(head_rollouts, manager.args.sigma_k)
+
+            # Compute zero fractions statistics
+            zero_frac = (binary_maps == 0).float().mean(dim=(-1, -2)) # -> (batch, head)
+            zero_frac_mean = zero_frac.mean(dim=(0, 1))
+            zero_fracs.append(zero_frac_mean.item()) 
+
             weighted_sum = (map_weights * binary_maps).sum(dim=1) # -> (batch, seq, seq)
 
             mins = weighted_sum.amin(dim=(-1, -2), keepdim=True)
             maxs = weighted_sum.amax(dim=(-1, -2), keepdim=True)
+            dynamic_ranges.append((maxs - mins).mean().item())
             normalized_maps = (weighted_sum - mins) / (maxs - mins + 1e-10) # -> (batch, seq, seq)
 
             patch_scores = normalized_maps[:, 0, 1:] # -> (batch, seq-1) only cls row, and drop cls column
@@ -282,8 +292,14 @@ def et_one_epoch(manager, epoch):
                         pure_fbank, _, _ = manager.data_loader_train.dataset.get_item_by_filename(base_name)
                         manager.plotter.plot_spectrogram(pure_fbank[0].detach().cpu().squeeze(0).numpy().T, base_name)
                     if epoch + 1 in manager.plot_epochs:
-                        manager.plotter.plot_attention_heatmap(attention[idx].detach().cpu().numpy(), base_name, epoch)
-                        manager.plotter.plot_avg_received_attention(attention[idx].detach().cpu().numpy(), base_name, epoch)
+                        manager.plotter.plot_saliency_map(normalized_saliency_maps[idx][0].detach().cpu().numpy().T, base_name, epoch)
+                        pure_fbank, _, _ = manager.data_loader_train.dataset.get_item_by_filename(base_name)
+                        manager.plotter.plot_heatmap(pure_fbank[0].detach().cpu().squeeze(0).numpy().T, normalized_saliency_maps[idx][0].detach().cpu().numpy().T, base_name, epoch)
+
+        # Log statistics
+        manager.logger.info(f"Average zero fraction in binary maps: {np.mean(zero_fracs):.4f}")
+        manager.logger.info(f"Average one fraction in binary maps: {1 - np.mean(zero_fracs):.4f}")
+        manager.logger.info(f"Average dynamic range in binary weighted sums: {np.mean(dynamic_ranges):.4f}")
 
         train_loss = total_loss / len(manager.data_loader_train)
 
