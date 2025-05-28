@@ -94,7 +94,7 @@ class Plots:
         filename_wo_ext = os.path.splitext(filename)[0]
         epoch_dir = os.path.join(self.img_dir, f"epoch_{epoch}")
         os.makedirs(epoch_dir, exist_ok=True)
-        fig.savefig(os.path.join(self.epoch_dir, f"{filename_wo_ext}_saliency_map.png"), bbox_inches="tight")
+        fig.savefig(os.path.join(epoch_dir, f"{filename_wo_ext}_saliency_map.png"), bbox_inches="tight")
         plt.close(fig)
 
     def plot_heatmap(self, spectrogram, saliency_map, filename, epoch):
@@ -114,7 +114,7 @@ class Plots:
         filename_wo_ext = os.path.splitext(filename)[0]
         epoch_dir = os.path.join(self.img_dir, f"epoch_{epoch}")
         os.makedirs(epoch_dir, exist_ok=True)
-        fig.savefig(os.path.join(self.epoch_dir, f"{filename_wo_ext}_heatmap.png"), bbox_inches="tight")
+        fig.savefig(os.path.join(epoch_dir, f"{filename_wo_ext}_heatmap.png"), bbox_inches="tight")
         plt.close(fig)
 
     def plot_augmented_input(self, augmented_input, filename, epoch):
@@ -138,7 +138,7 @@ class Plots:
         filename_wo_ext = os.path.splitext(filename)[0]
         epoch_dir = os.path.join(self.img_dir, f"epoch_{epoch}")
         os.makedirs(epoch_dir, exist_ok=True)
-        fig.savefig(os.path.join(self.epoch_dir, f"{filename_wo_ext}_augmented_input.png"), bbox_inches="tight")
+        fig.savefig(os.path.join(epoch_dir, f"{filename_wo_ext}_augmented_input.png"), bbox_inches="tight")
         plt.close(fig)
 
     def plot_attention_heatmap(self, attention, filename, epoch, mode="attention"):
