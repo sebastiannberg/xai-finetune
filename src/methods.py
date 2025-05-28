@@ -295,6 +295,7 @@ def et_one_epoch(manager, epoch):
                         manager.plotter.plot_saliency_map(normalized_saliency_maps[idx][0].detach().cpu().numpy().T, base_name, epoch)
                         pure_fbank, _, _ = manager.data_loader_train.dataset.get_item_by_filename(base_name)
                         manager.plotter.plot_heatmap(pure_fbank[0].detach().cpu().squeeze(0).numpy().T, normalized_saliency_maps[idx][0].detach().cpu().numpy().T, base_name, epoch)
+                        manager.plotter.plot_augmented_input(augmented_input[idx][0].detach().cpu().numpy().T, base_name, epoch)
 
         # Log statistics
         manager.logger.info(f"Average zero fraction in binary maps: {np.mean(zero_fracs):.4f}")

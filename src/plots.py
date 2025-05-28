@@ -117,6 +117,30 @@ class Plots:
         fig.savefig(os.path.join(self.epoch_dir, f"{filename_wo_ext}_heatmap.png"), bbox_inches="tight")
         plt.close(fig)
 
+    def plot_augmented_input(self, augmented_input, filename, epoch):
+        fig, ax = plt.subplots(figsize=(10, 3))
+        im = ax.imshow(
+            augmented_input,
+            cmap="gray",
+            origin="lower",
+            interpolation="nearest",
+            aspect="auto"
+        )
+
+        ax.set_title(f"{filename} - Augmented Input - Epoch {epoch+1}")
+        ax.set_xlabel("Time")
+        ax.set_ylabel("Frequency")
+
+        divider = make_axes_locatable(ax)
+        cax = divider.append_axes("right", size="3%", pad=0.05)
+        fig.colorbar(im, cax=cax)
+
+        filename_wo_ext = os.path.splitext(filename)[0]
+        epoch_dir = os.path.join(self.img_dir, f"epoch_{epoch}")
+        os.makedirs(epoch_dir, exist_ok=True)
+        fig.savefig(os.path.join(self.epoch_dir, f"{filename_wo_ext}_augmented_input.png"), bbox_inches="tight")
+        plt.close(fig)
+
     def plot_attention_heatmap(self, attention, filename, epoch, mode="attention"):
         # attention shape: (block, head, seq, seq)
         filename_wo_ext = os.path.splitext(filename)[0]
