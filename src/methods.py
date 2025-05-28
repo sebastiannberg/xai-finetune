@@ -270,7 +270,10 @@ def et_one_epoch(manager, epoch):
             saliency_maxs = saliency_maps.amax(dim=(-1, -2), keepdim=True)
             normalized_saliency_maps = (saliency_maps - saliency_mins) / (saliency_maxs - saliency_mins + 1e-10)
 
-            augmented_input = fbank * normalized_saliency_maps.detach()
+            # Gradually introduce explanations
+            progress = (epoch - manager.args.start_epoch) / (manager.args.epochs - manager.args.start_epoch)
+            alpha_saliency = min(max(progress, 0.0), 1.0)
+            augmented_input = fbank * (1 - alpha_saliency) + (fbank * normalized_saliency_maps.detach()) * alpha_saliency
 
             manager.optimizer.zero_grad()
             with autocast():
