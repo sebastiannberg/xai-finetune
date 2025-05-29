@@ -9,9 +9,9 @@ class Plots:
 
     def __init__(self, img_dir):
         self.img_dir = img_dir
-        self.dpi = 300
+        self.dpi = 250
         rcParams.update({
-            'font.size': 16,        # Base font size
+            'font.size': 11,        # Base font size
             # 'axes.labelsize': 26,   # Axis label size
             # 'xtick.labelsize': 20,  # X-axis tick label size
             # 'ytick.labelsize': 20,  # Y-axis tick label size
