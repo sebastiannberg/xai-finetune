@@ -1,7 +1,7 @@
 import os
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-# from matplotlib import rcParams
+from matplotlib import rcParams
 import numpy as np
 
 
@@ -9,12 +9,13 @@ class Plots:
 
     def __init__(self, img_dir):
         self.img_dir = img_dir
-        # rcParams.update({
-        #     'font.size': 30,        # Base font size
-        #     'axes.labelsize': 26,   # Axis label size
-        #     'xtick.labelsize': 20,  # X-axis tick label size
-        #     'ytick.labelsize': 20,  # Y-axis tick label size
-        # })
+        self.dpi = 300
+        rcParams.update({
+            'font.size': 16,        # Base font size
+            # 'axes.labelsize': 26,   # Axis label size
+            # 'xtick.labelsize': 20,  # X-axis tick label size
+            # 'ytick.labelsize': 20,  # Y-axis tick label size
+        })
 
     def plot_loss_curve(self, train_loss_list, val_loss_list):
         epochs = range(len(train_loss_list))
@@ -25,7 +26,7 @@ class Plots:
         plt.ylabel("Loss")
         plt.legend()
         plt.grid(True)
-        plt.savefig(os.path.join(self.img_dir, "loss_curve.png"))
+        plt.savefig(os.path.join(self.img_dir, "loss_curve.png"), dpi=self.dpi)
         plt.close()
 
     def plot_accuracy_f1_curve(self, acc_list, f1_list):
@@ -37,7 +38,7 @@ class Plots:
         plt.ylabel("Value")
         plt.legend()
         plt.grid(True)
-        plt.savefig(os.path.join(self.img_dir, "accuracy_f1_curve.png"))
+        plt.savefig(os.path.join(self.img_dir, "accuracy_f1_curve.png"), dpi=self.dpi)
         plt.close()
 
     def plot_cls_attn_curve(self, cls_attn_list):
@@ -48,7 +49,7 @@ class Plots:
         plt.xlabel("Epoch")
         plt.ylabel("Value")
         plt.grid(True)
-        plt.savefig(os.path.join(self.img_dir, "avg_received_attention_cls_epochs.png"))
+        plt.savefig(os.path.join(self.img_dir, "avg_received_attention_cls_epochs.png"), dpi=self.dpi)
         plt.close()
 
     def plot_spectrogram(self, spectrogram, filename):
@@ -70,7 +71,7 @@ class Plots:
         fig.colorbar(im, cax=cax)
 
         filename_wo_ext = os.path.splitext(filename)[0]
-        fig.savefig(os.path.join(self.img_dir, f"{filename_wo_ext}_spectrogram.png"), bbox_inches="tight")
+        fig.savefig(os.path.join(self.img_dir, f"{filename_wo_ext}_spectrogram.png"), bbox_inches="tight", dpi=self.dpi)
         plt.close(fig)
 
     def plot_saliency_map(self, saliency_map, filename, epoch):
@@ -94,7 +95,7 @@ class Plots:
         filename_wo_ext = os.path.splitext(filename)[0]
         epoch_dir = os.path.join(self.img_dir, f"epoch_{epoch}")
         os.makedirs(epoch_dir, exist_ok=True)
-        fig.savefig(os.path.join(epoch_dir, f"{filename_wo_ext}_saliency_map.png"), bbox_inches="tight")
+        fig.savefig(os.path.join(epoch_dir, f"{filename_wo_ext}_saliency_map.png"), bbox_inches="tight", dpi=self.dpi)
         plt.close(fig)
 
     def plot_heatmap(self, spectrogram, saliency_map, filename, epoch):
@@ -114,7 +115,7 @@ class Plots:
         filename_wo_ext = os.path.splitext(filename)[0]
         epoch_dir = os.path.join(self.img_dir, f"epoch_{epoch}")
         os.makedirs(epoch_dir, exist_ok=True)
-        fig.savefig(os.path.join(epoch_dir, f"{filename_wo_ext}_heatmap.png"), bbox_inches="tight")
+        fig.savefig(os.path.join(epoch_dir, f"{filename_wo_ext}_heatmap.png"), bbox_inches="tight", dpi=self.dpi)
         plt.close(fig)
 
     def plot_augmented_input(self, augmented_input, filename, epoch):
@@ -138,7 +139,7 @@ class Plots:
         filename_wo_ext = os.path.splitext(filename)[0]
         epoch_dir = os.path.join(self.img_dir, f"epoch_{epoch}")
         os.makedirs(epoch_dir, exist_ok=True)
-        fig.savefig(os.path.join(epoch_dir, f"{filename_wo_ext}_augmented_input.png"), bbox_inches="tight")
+        fig.savefig(os.path.join(epoch_dir, f"{filename_wo_ext}_augmented_input.png"), bbox_inches="tight", dpi=self.dpi)
         plt.close(fig)
 
     def plot_attention_heatmap(self, attention, filename, epoch, mode="attention"):
@@ -166,7 +167,7 @@ class Plots:
             cax = divider.append_axes("right", size="3%", pad=0.05)
             fig.colorbar(im, cax=cax)
 
-            fig.savefig(os.path.join(epoch_dir, f"{filename_wo_ext}_block_{i}_{mode}_heatmap.png"), bbox_inches="tight")
+            fig.savefig(os.path.join(epoch_dir, f"{filename_wo_ext}_block_{i}_{mode}_heatmap.png"), bbox_inches="tight", dpi=self.dpi)
             plt.close(fig)
 
         avg_blocks_attention = attention.mean(axis=(0, 1))
@@ -187,7 +188,7 @@ class Plots:
         cax = divider.append_axes("right", size="3%", pad=0.05)
         fig.colorbar(im, cax=cax)
 
-        fig.savefig(os.path.join(epoch_dir, f"{filename_wo_ext}_block_all_{mode}_heatmap.png"), bbox_inches="tight")
+        fig.savefig(os.path.join(epoch_dir, f"{filename_wo_ext}_block_all_{mode}_heatmap.png"), bbox_inches="tight", dpi=self.dpi)
         plt.close(fig)
 
     def plot_avg_received_attention(self, attention, filename, epoch, mode="attention"):
@@ -202,7 +203,7 @@ class Plots:
         plt.ylabel("Value")
         plt.title(f"{filename} - Average Received {mode.capitalize()} - All Blocks")
         plt.tight_layout()
-        plt.savefig(os.path.join(epoch_dir, f"{filename_wo_ext}_average_received_{mode}.png"), bbox_inches="tight")
+        plt.savefig(os.path.join(epoch_dir, f"{filename_wo_ext}_average_received_{mode}.png"), bbox_inches="tight", dpi=self.dpi)
         plt.close()
 
     def plot_attention_gradient(self, attention_gradient, filename, epoch, block_idx):
@@ -217,7 +218,7 @@ class Plots:
         plt.ylabel("Value")
         plt.title(f"{filename} - Attention Gradient (avg over queries) - Block {block_idx}")
         plt.tight_layout()
-        plt.savefig(os.path.join(epoch_dir, f"{filename_wo_ext}_block_{block_idx}_attention_gradient_queries.png"), bbox_inches="tight")
+        plt.savefig(os.path.join(epoch_dir, f"{filename_wo_ext}_block_{block_idx}_attention_gradient_queries.png"), bbox_inches="tight", dpi=self.dpi)
         plt.close()
         avg_over_keys = attention_gradient.mean(axis=(0, 2))
         plt.figure(figsize=(10, 6))
@@ -226,7 +227,7 @@ class Plots:
         plt.ylabel("Value")
         plt.title(f"{filename} - Attention Gradient (avg over keys) - Block {block_idx}")
         plt.tight_layout()
-        plt.savefig(os.path.join(epoch_dir, f"{filename_wo_ext}_block_{block_idx}_attention_gradient_keys.png"), bbox_inches="tight")
+        plt.savefig(os.path.join(epoch_dir, f"{filename_wo_ext}_block_{block_idx}_attention_gradient_keys.png"), bbox_inches="tight", dpi=self.dpi)
         plt.close()
 
     def plot_snr(self, snr_values, filename, mode="standard"):
@@ -238,10 +239,10 @@ class Plots:
         plt.grid(True)
         if mode == "standard":
             plt.title(f"{filename} - Attention Gradient SNR")
-            plt.savefig(os.path.join(self.img_dir, f"{filename_wo_ext}_attention_gradient_snr_curve.png"))
+            plt.savefig(os.path.join(self.img_dir, f"{filename_wo_ext}_attention_gradient_snr_curve.png"), dpi=self.dpi)
         elif mode == "pre":
             plt.title(f"{filename} - Attention Gradient (Pre Softmax) SNR")
-            plt.savefig(os.path.join(self.img_dir, f"{filename_wo_ext}_attention_gradient_pre_softmax_snr_curve.png"))
+            plt.savefig(os.path.join(self.img_dir, f"{filename_wo_ext}_attention_gradient_pre_softmax_snr_curve.png"), dpi=self.dpi)
         plt.close()
 
     def plot_pos_embed(self, pos_embed):
@@ -263,5 +264,5 @@ class Plots:
         cax = divider.append_axes("right", size="3%", pad=0.05)
         fig.colorbar(im, cax=cax)
 
-        fig.savefig(os.path.join(self.img_dir, "positional_embeddings.png"), bbox_inches="tight")
+        fig.savefig(os.path.join(self.img_dir, "positional_embeddings.png"), bbox_inches="tight", dpi=self.dpi)
         plt.close(fig)
