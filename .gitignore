@@ -15,6 +15,7 @@ img/
 *.pth
 ckpt/
 results/
+deletion_insertion_results/
 
 # Slurm
 scripts/
