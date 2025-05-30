@@ -7,8 +7,11 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+# import torch.nn.functional as F
 from torch.utils.data import DataLoader, Subset
+
+from einops import rearrange
+from typing import Union
 
 from urban_dataset import UrbanDataset
 from models_vit import PatchEmbed_new
@@ -107,61 +110,83 @@ def attention_gradients(model, fbank, label):
     normalized_saliency_maps = (saliency_maps - saliency_mins) / (saliency_maxs - saliency_mins + 1e-10)
     return normalized_saliency_maps
 
-def compute_deletion(inputs, saliency, model, label, n_steps=20):
-    flat_sal = saliency.view(-1).detach().cpu().numpy()
+def batch_deletion_for_image(
+    x: torch.Tensor,  # batch of images (b c h w)
+    expl: torch.Tensor, # batch of explanations (b h w)
+    bg: torch.Tensor,  # channel-wise background values (c,)
+    f: torch.nn.Module,  # classifier
+    labels: torch.Tensor,  # label indices to evaluate
+    K: Union[float, int] = 0.2,  # proportion or number of removed pixels
+    normalize: bool = False,  # normalize the values of f
+    step: int = 1,  # number of pixels modified per one iteration.
+    reduction: str = 'sum'  # 'sum' or 'mean'
+):
+    b, c, h, w = x.shape
+    K_ = int(K * h * w) if isinstance(K, float) else K
+    maxiter = K_ // step
+    expl_flat = rearrange(expl, 'b h w -> b (h w)')
+    bg_ = bg.reshape(c, 1)
 
-    # 95, 90, …, 0   (same order as the official implementation)
-    percents   = np.linspace(100, 0, n_steps, endpoint=False)   # e.g. 100,95,…,5
-    thresholds = np.percentile(flat_sal, percents)
+    x_flat = rearrange(x, 'b c h w -> b c (h w)')
+    x_batch = torch.empty((b, maxiter+1, c, h*w), dtype=x.dtype, device=x.device)
+    values, indices = torch.sort(expl_flat, dim=-1, descending=True)
+    for bi in range(b):
+        for i in range(1, maxiter + 1):
+            index = i * step
+            x_batch[bi, i, :, indices[bi, :index]] = bg_
+            x_batch[bi, i, :, indices[bi, index:]] = x_flat[bi, :, indices[bi, index:]]
 
-    cls   = label.argmax(dim=1)[0].item()
+    batch_labels = labels.detach().clone().repeat_interleave(maxiter+1)
+    x_batch = rearrange(x_batch, 'b r c (h w) -> (b r) c h w', h=h)
+    y_batch = torch.softmax(f(x_batch), dim=-1)[range(b * (maxiter+1)), batch_labels]
+    y_batch = y_batch.reshape(b, maxiter+1)  # (b,r)  TODO: batch inference
+    y_batch = y_batch / y_batch[:, 0].reshape(-1, 1) if normalize else y_batch
 
-    # step 0: original confidence
-    with torch.no_grad():
-        orig_conf = F.softmax(model(inputs), dim=1)[0, cls]
-        blank_conf = F.softmax(model(torch.zeros_like(inputs)), dim=1)[0, cls]
+    if reduction == 'sum':
+        scores = torch.sum(y_batch[:, 1:], dim=-1)
+    elif reduction == 'mean':
+        scores = torch.mean(y_batch[:, 1:], dim=-1)
 
-    curve = [orig_conf.item()]          # start at original
+    return scores
 
-    for thresh in thresholds:
-        # mask out the TOP-saliency pixels above the current threshold
-        mask_flat = (saliency.view(-1) > thresh).to(inputs.device).float()
-        x_flat    = inputs.view(1, inputs.shape[1], -1) * mask_flat
-        x_mask    = x_flat.view_as(inputs)
+def batch_insertion_for_image(
+    x: torch.Tensor,  # batch of images (b c h w)
+    expl: torch.Tensor, # batch of explanations (b h w)
+    bg: torch.Tensor,  # channel-wise background values (c,)
+    f: torch.nn.Module,  # classifier
+    labels: torch.Tensor,  # label indices to evaluate
+    K: Union[float, int] = 0.2,  # proportion or number of inserted pixels
+    normalize: bool = False,  # normalize the values of f
+    step: int = 1,  # number of pixels modified per one iteration.
+    reduction: str = 'sum'  # 'sum' or 'mean'
+):
+    b, c, h, w = x.shape
+    K_ = int(K * h * w) if isinstance(K, float) else K
+    maxiter = K_ // step
+    expl_flat = rearrange(expl, 'b h w -> b (h w)')
+    bg_ = bg.reshape(c, 1)
 
-        prob = F.softmax(model(x_mask), dim=1)[0, cls]
-        curve.append(prob.item())
+    x_flat = rearrange(x, 'b c h w -> b c (h w)')
+    x_batch = torch.empty((b, maxiter+1, c, h*w), dtype=x.dtype, device=x.device)
+    values, indices = torch.sort(expl_flat, dim=-1, descending=True)
+    for bi in range(b):
+        for i in range(1, maxiter + 1):
+            index = i * step
+            x_batch[bi, i, :, indices[bi, :index]] = x_flat[bi, :, indices[bi, :index]]
+            x_batch[bi, i, :, indices[bi, index:]] = bg_
 
-    curve.append(blank_conf.item())     # final step = fully blank
-    return torch.tensor(curve).unsqueeze(0)
+    batch_labels = labels.detach().clone().repeat_interleave(maxiter+1)
+    x_batch = rearrange(x_batch, 'b r c (h w) -> (b r) c h w', h=h)
+    y_batch = torch.softmax(f(x_batch), dim=-1)[range(b * (maxiter+1)), batch_labels]
+    y_batch = y_batch.reshape(b, maxiter+1)  # (b,r)  TODO: batch inference
+    y_batch = y_batch / y_batch[:, 0].reshape(-1, 1) if normalize else y_batch
 
-def compute_insertion(inputs, saliency, model, label, n_steps=20):
-    flat_sal = saliency.view(-1).detach().cpu().numpy()
-    percents = np.linspace(100, 0, n_steps, endpoint=False)     # same grid as deletion
-    thresholds = np.percentile(flat_sal, percents)
+    if reduction == 'sum':
+        scores = torch.sum(y_batch[:, 1:], dim=-1)
+    elif reduction == 'mean':
+        scores = torch.mean(y_batch[:, 1:], dim=-1)
 
-    cls   = label.argmax(dim=1)[0].item()
-    blank = torch.zeros_like(inputs)
-
-    # endpoints
-    with torch.no_grad():
-        blank_conf = F.softmax(model(blank),   dim=1)[0, cls]
-        orig_conf  = F.softmax(model(inputs),  dim=1)[0, cls]
-
-    curve = [blank_conf.item()]                     # start at blank
-
-    for thresh in thresholds:
-        mask_flat = (saliency.view(-1) > thresh).to(inputs.device).float()
-        inputs_flat = inputs.view(1, inputs.shape[1], -1)
-        blank_flat  = blank.view(1, inputs.shape[1], -1)
-        x_ins_flat  = blank_flat * (1 - mask_flat) + inputs_flat * mask_flat
-        x_ins       = x_ins_flat.view_as(inputs)
-
-        prob = F.softmax(model(x_ins), dim=1)[0, cls]
-        curve.append(prob.item())
-
-    curve.append(orig_conf.item())                  # final = original
-    return torch.tensor(curve).unsqueeze(0)
+    return scores
 
 def main():
     args = get_args()
@@ -236,38 +261,32 @@ def main():
         model.to(device)
         print(f'Device: {device}')
 
-        # single‐batch smoke test
-        fbank, label, _ = next(iter(data_loader_val))
-        fbank = fbank.to(device); label = label.to(device)
-
-        # get the two curves
-        saliency = attention_rollout(model, model(fbank, return_attention=True)[1])
-        del_curve = compute_deletion(fbank, saliency, model, label, n_steps=100)  # (1, n_steps)
-        ins_curve = compute_insertion(fbank, saliency, model, label, n_steps=100)  # (1, n_steps)
-
-        # compute the “ground truth” endpoints
-        with torch.no_grad():
-            orig_logits  = model(fbank)
-            blank       = torch.zeros_like(fbank)
-            blank_logits = model(blank)
-            class_index        = label.argmax(dim=1)[0].item()            # get the integer class
-            orig_conf  = torch.softmax(orig_logits,  dim=1)[0, class_index]
-            blank_conf = torch.softmax(blank_logits, dim=1)[0, class_index]
-
-        # check deletion curve
-        print("del_curve:", del_curve[0, 0].item(), "…", del_curve[0, -1].item())
-        print(" expected orig_conf=", orig_conf.item(), 
-              " blank_conf=",   blank_conf.item())
-
-        # check insertion curve
-        print("ins_curve:", ins_curve[0, 0].item(), "…", ins_curve[0, -1].item())
-        print(" expected blank_conf=",   blank_conf.item(), 
-              " orig_conf=", orig_conf.item())
-
-        rand_sal = torch.rand_like(saliency)
-        rand_del = compute_deletion(fbank, rand_sal, model, label, n_steps=100)
-        rand_ins = compute_insertion(fbank, rand_sal, model, label, n_steps=100)
-        print(f"RANDOM   deletion mean={rand_del.mean():.4f}  insertion mean={rand_ins.mean():.4f}")
+        # # single‐batch smoke TEST fbank, label, _ = next(iter(data_loader_val))
+        # fbank = fbank.to(device); label = label.to(device)
+        # # get the two curves
+        # saliency = attention_rollout(model, model(fbank, return_attention=True)[1])
+        # del_curve = compute_deletion(fbank, saliency, model, label, n_steps=100)  # (1, n_steps)
+        # ins_curve = compute_insertion(fbank, saliency, model, label, n_steps=100)  # (1, n_steps)
+        # # compute the “ground truth” endpoints
+        # with torch.no_grad():
+        #     orig_logits  = model(fbank)
+        #     blank       = torch.zeros_like(fbank)
+        #     blank_logits = model(blank)
+        #     class_index        = label.argmax(dim=1)[0].item()            # get the integer class
+        #     orig_conf  = torch.softmax(orig_logits,  dim=1)[0, class_index]
+        #     blank_conf = torch.softmax(blank_logits, dim=1)[0, class_index]
+        # # check deletion curve
+        # print("del_curve:", del_curve[0, 0].item(), "…", del_curve[0, -1].item())
+        # print(" expected orig_conf=", orig_conf.item(), 
+        #       " blank_conf=",   blank_conf.item())
+        # # check insertion curve
+        # print("ins_curve:", ins_curve[0, 0].item(), "…", ins_curve[0, -1].item())
+        # print(" expected blank_conf=",   blank_conf.item(), 
+        #       " orig_conf=", orig_conf.item())
+        # rand_sal = torch.rand_like(saliency)
+        # rand_del = compute_deletion(fbank, rand_sal, model, label, n_steps=100)
+        # rand_ins = compute_insertion(fbank, rand_sal, model, label, n_steps=100)
+        # print(f"RANDOM   deletion mean={rand_del.mean():.4f}  insertion mean={rand_ins.mean():.4f}")
 
         del_rollout_list = []
         ins_rollout_list = []
@@ -282,17 +301,28 @@ def main():
             _, attention = model(fbank, return_attention=True)
 
             saliency_rollout = attention_rollout(model, attention) # -> (batch, 1, time, freq)
-            del_curve_rollout = compute_deletion(fbank, saliency_rollout, model, label) # -> (batch, n_steps)
-            ins_curve_rollout = compute_insertion(fbank, saliency_rollout, model, label) # -> (batch, n_steps)
+            # del_curve_rollout = compute_deletion(fbank, saliency_rollout, model, label) # -> (batch, n_steps)
+            # ins_curve_rollout = compute_insertion(fbank, saliency_rollout, model, label) # -> (batch, n_steps)
+            del_scores_rollout = batch_deletion_for_image(fbank, saliency_rollout.squeeze(1), torch.tensor(data=0.3), model, label)
+            ins_scores_rollout = batch_insertion_for_image(fbank, saliency_rollout.squeeze(1), torch.tensor(data=0.3), model, label)
 
             saliency_grad = attention_gradients(model, fbank, label) # -> (batch, 1, time, freq)
-            del_curve_grad = compute_deletion(fbank, saliency_grad, model, label) # -> (batch, n_steps)
-            ins_curve_grad = compute_insertion(fbank, saliency_grad, model, label) # -> (batch, n_steps)
+            # del_curve_grad = compute_deletion(fbank, saliency_grad, model, label) # -> (batch, n_steps)
+            # ins_curve_grad = compute_insertion(fbank, saliency_grad, model, label) # -> (batch, n_steps)
+            del_scores_grad = batch_deletion_for_image(fbank, saliency_grad.squeeze(1), torch.tensor(data=0.3), model, label)
+            ins_scores_grad = batch_insertion_for_image(fbank, saliency_grad.squeeze(1), torch.tensor(data=0.3), model, label)
 
-            del_rollout_list.append(del_curve_rollout)
-            ins_rollout_list.append(ins_curve_rollout)
-            del_grad_list.append(del_curve_grad)
-            ins_grad_list.append(ins_curve_grad)
+            print(del_scores_rollout)
+            print(ins_scores_rollout)
+            print(del_scores_grad)
+            print(ins_scores_grad)
+
+            raise ValueError
+
+            # del_rollout_list.append(del_curve_rollout)
+            # ins_rollout_list.append(ins_curve_rollout)
+            # del_grad_list.append(del_curve_grad)
+            # ins_grad_list.append(ins_curve_grad)
 
         # Concatenate across all batches -> (n_samples, n_steps)
         del_r = torch.cat(del_rollout_list, dim=0)
