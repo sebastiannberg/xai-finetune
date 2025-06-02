@@ -7,11 +7,10 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 import torch
 import torch.nn as nn
-# import torch.nn.functional as F
 from torch.utils.data import DataLoader, Subset
-
 from einops import rearrange
 from typing import Union
+from tqdm import tqdm
 
 from urban_dataset import UrbanDataset
 from models_vit import PatchEmbed_new
@@ -22,7 +21,13 @@ PROJECT_ROOT = Path(__file__).parent.parent.absolute()
 DATASET_PATH = os.path.join(PROJECT_ROOT, "data", "UrbanSound8K")
 RESULT_PATH = os.path.join(PROJECT_ROOT, "deletion_insertion_results")
 CKPT_PATHS = {
-    "baseline_with_augmentations_lr10-5_wd10-5_bs8": "/home/sebastian/dev/xai-finetune/results/final_experiments/baseline_with_augmentations_lr10-5_wd10-5_bs8/ckpt/epoch_60.pth"
+    "baseline_with_augmentations_lr10-5_wd10-5_bs8": "/home/sebastian/dev/xai-finetune/results/final_experiments/baseline_with_augmentations_lr10-5_wd10-5_bs8/ckpt/epoch_60.pth",
+    "baseline_without_augmentations_lr10-5_wd10-5_bs8": "/home/sebastian/dev/xai-finetune/results/final_experiments/baseline_without_augmentations_lr10-5_wd10-5_bs8/ckpt/epoch_60.pth",
+    "ifi_a90_t10-5_se2_wball": "/home/sebastian/dev/xai-finetune/results/final_experiments/ifi_a90_t10-5_se2_wball/ckpt/epoch_60.pth",
+    "et_se1_k0": "/home/sebastian/dev/xai-finetune/results/final_experiments/et_se1_k0/ckpt/epoch_60.pth",
+    "et_se10_k0": "/home/sebastian/dev/xai-finetune/results/final_experiments/et_se10_k0/ckpt/epoch_60.pth",
+    "et_with_augmentations_se1_k0": "/home/sebastian/dev/xai-finetune/results/final_experiments/et_with_augmentations_se1_k0/ckpt/epoch_60.pth",
+    "et_with_augmentations_se10_k0": "/home/sebastian/dev/xai-finetune/results/final_experiments/et_with_augmentations_se10_k0/ckpt/epoch_60.pth",
 }
 
 def get_args():
@@ -110,83 +115,114 @@ def attention_gradients(model, fbank, label):
     normalized_saliency_maps = (saliency_maps - saliency_mins) / (saliency_maxs - saliency_mins + 1e-10)
     return normalized_saliency_maps
 
-def batch_deletion_for_image(
-    x: torch.Tensor,  # batch of images (b c h w)
-    expl: torch.Tensor, # batch of explanations (b h w)
-    bg: torch.Tensor,  # channel-wise background values (c,)
-    f: torch.nn.Module,  # classifier
-    labels: torch.Tensor,  # label indices to evaluate
-    K: Union[float, int] = 0.2,  # proportion or number of removed pixels
-    normalize: bool = False,  # normalize the values of f
-    step: int = 1,  # number of pixels modified per one iteration.
-    reduction: str = 'sum'  # 'sum' or 'mean'
+def deletion(
+    x: torch.Tensor, # batch of images (1 c h w)
+    expl: torch.Tensor, # batch of explanations (1 h w)
+    bg: torch.Tensor, # channel-wise background values (c,)
+    f: torch.nn.Module, # classifier
+    labels: torch.Tensor, # label indices to evaluate
+    K: Union[float, int] = 0.4, # proportion or number of removed pixels
+    step: int = 100, # number of pixels modified per one iteration
+    reduction: str = 'mean' # 'sum' or 'mean'
 ):
     b, c, h, w = x.shape
+    assert b == 1
+    x0 = x
+    x = x.squeeze(0)
+    expl = expl.squeeze(0)
     K_ = int(K * h * w) if isinstance(K, float) else K
     maxiter = K_ // step
-    expl_flat = rearrange(expl, 'b h w -> b (h w)')
-    bg_ = bg.reshape(c, 1)
 
-    x_flat = rearrange(x, 'b c h w -> b c (h w)')
-    x_batch = torch.empty((b, maxiter+1, c, h*w), dtype=x.dtype, device=x.device)
-    values, indices = torch.sort(expl_flat, dim=-1, descending=True)
-    for bi in range(b):
+    x_flat = rearrange(x, 'c h w -> c (h w)')
+    expl_flat = rearrange(expl, 'h w -> (h w)')
+    bg_ = bg.view(c, 1)
+
+    _, indices = torch.sort(expl_flat, descending=True)
+
+    cls_idx = labels.argmax(dim=-1).item()
+
+    with torch.no_grad():
+        orig_logit = f(x0)                                                 # (1, num_classes)
+        orig_conf  = torch.softmax(orig_logit, dim=-1)[0, cls_idx]         # scalar
+        # make a fully‐background image of same size:
+        blank_flat = bg_.repeat(1, x_flat.size(1))
+        blank_img  = rearrange(blank_flat, 'c (h w) -> 1 c h w', h=h)
+        blank_logit= f(blank_img)
+        blank_conf = torch.softmax(blank_logit, dim=-1)[0, cls_idx]        # scalar
+
+    scores = []
+    with torch.no_grad():
         for i in range(1, maxiter + 1):
-            index = i * step
-            x_batch[bi, i, :, indices[bi, :index]] = bg_
-            x_batch[bi, i, :, indices[bi, index:]] = x_flat[bi, :, indices[bi, index:]]
+            to_remove = indices[: i * step]
+            x_mod = x_flat.clone()
+            x_mod[:, to_remove] = bg_
+            x_mod = rearrange(x_mod, 'c (h w) -> 1 c h w', h=h)
 
-    batch_labels = labels.detach().clone().repeat_interleave(maxiter+1)
-    x_batch = rearrange(x_batch, 'b r c (h w) -> (b r) c h w', h=h)
-    y_batch = torch.softmax(f(x_batch), dim=-1)[range(b * (maxiter+1)), batch_labels]
-    y_batch = y_batch.reshape(b, maxiter+1)  # (b,r)  TODO: batch inference
-    y_batch = y_batch / y_batch[:, 0].reshape(-1, 1) if normalize else y_batch
+            conf  = torch.softmax(f(x_mod), dim=-1)[0, cls_idx]
+
+            norm_i = (conf - blank_conf) / (orig_conf - blank_conf)
+            norm_i = norm_i.clamp(0.0, 1.0)
+            scores.append(norm_i)
+
+    scores = torch.stack(scores, dim=0)
 
     if reduction == 'sum':
-        scores = torch.sum(y_batch[:, 1:], dim=-1)
-    elif reduction == 'mean':
-        scores = torch.mean(y_batch[:, 1:], dim=-1)
+        return scores.sum()
+    else:
+        return scores.mean()
 
-    return scores
-
-def batch_insertion_for_image(
-    x: torch.Tensor,  # batch of images (b c h w)
+def insertion(
+    x: torch.Tensor, # batch of images (b c h w)
     expl: torch.Tensor, # batch of explanations (b h w)
-    bg: torch.Tensor,  # channel-wise background values (c,)
-    f: torch.nn.Module,  # classifier
-    labels: torch.Tensor,  # label indices to evaluate
-    K: Union[float, int] = 0.2,  # proportion or number of inserted pixels
-    normalize: bool = False,  # normalize the values of f
-    step: int = 1,  # number of pixels modified per one iteration.
-    reduction: str = 'sum'  # 'sum' or 'mean'
+    bg: torch.Tensor, # channel-wise background values (c,)
+    f: torch.nn.Module, # classifier
+    labels: torch.Tensor, # label indices to evaluate
+    K: Union[float, int] = 0.4, # proportion or number of inserted pixels
+    step: int = 100, # number of pixels modified per one iteration
+    reduction: str = 'mean' # 'sum' or 'mean'
 ):
     b, c, h, w = x.shape
+    assert b == 1
+    x0 = x
+    x = x.squeeze(0)
+    expl = expl.squeeze(0)
     K_ = int(K * h * w) if isinstance(K, float) else K
     maxiter = K_ // step
-    expl_flat = rearrange(expl, 'b h w -> b (h w)')
-    bg_ = bg.reshape(c, 1)
 
-    x_flat = rearrange(x, 'b c h w -> b c (h w)')
-    x_batch = torch.empty((b, maxiter+1, c, h*w), dtype=x.dtype, device=x.device)
-    values, indices = torch.sort(expl_flat, dim=-1, descending=True)
-    for bi in range(b):
-        for i in range(1, maxiter + 1):
-            index = i * step
-            x_batch[bi, i, :, indices[bi, :index]] = x_flat[bi, :, indices[bi, :index]]
-            x_batch[bi, i, :, indices[bi, index:]] = bg_
+    x_flat = rearrange(x, 'c h w -> c (h w)')
+    expl_flat = rearrange(expl, 'h w -> (h w)')
+    bg_ = bg.view(c, 1)
 
-    batch_labels = labels.detach().clone().repeat_interleave(maxiter+1)
-    x_batch = rearrange(x_batch, 'b r c (h w) -> (b r) c h w', h=h)
-    y_batch = torch.softmax(f(x_batch), dim=-1)[range(b * (maxiter+1)), batch_labels]
-    y_batch = y_batch.reshape(b, maxiter+1)  # (b,r)  TODO: batch inference
-    y_batch = y_batch / y_batch[:, 0].reshape(-1, 1) if normalize else y_batch
+    _, indices = torch.sort(expl_flat, descending=True)
+
+    cls_idx = labels.argmax(dim=-1).item()
+
+    with torch.no_grad():
+        orig_conf  = torch.softmax(f(x0), dim=-1)[0, cls_idx]
+        blank_flat = bg_.repeat(1, x_flat.size(1))
+        blank_img  = rearrange(blank_flat, 'c (h w) -> 1 c h w', h=h)
+        blank_conf = torch.softmax(f(blank_img), dim=-1)[0, cls_idx]
+
+    scores = []
+    with torch.no_grad():
+        for i in range(0, maxiter+1):
+            keep_idx = indices[: i*step]
+            x_mod = bg_.repeat(1, x_flat.size(1))
+            x_mod[:, keep_idx] = x_flat[:, keep_idx]
+            x_mod = rearrange(x_mod, 'c (h w) -> 1 c h w', h=h)
+
+            conf  = torch.softmax(f(x_mod), dim=-1)[0, cls_idx]
+
+            norm_i = (conf - blank_conf) / (orig_conf - blank_conf)
+            norm_i = norm_i.clamp(0.0, 1.0)
+            scores.append(norm_i)
+
+    scores = torch.stack(scores, dim=0)
 
     if reduction == 'sum':
-        scores = torch.sum(y_batch[:, 1:], dim=-1)
-    elif reduction == 'mean':
-        scores = torch.mean(y_batch[:, 1:], dim=-1)
-
-    return scores
+        return scores.sum()
+    else:
+        return scores.mean()
 
 def main():
     args = get_args()
@@ -229,6 +265,13 @@ def main():
         drop_last=False
     )
 
+    # means = []
+    # for fbank, _, _ in data_loader_val:
+    #     means.append(fbank.mean(dim=(0,2,3)).squeeze().item())
+    # mean_bg = np.mean(means)
+    # print(mean_bg)
+    # raise ValueError
+
     results = {}
     for name, ckpt_path in CKPT_PATHS.items():
         print(f"Evaluating {name} @ {ckpt_path}")
@@ -261,107 +304,46 @@ def main():
         model.to(device)
         print(f'Device: {device}')
 
-        # # single‐batch smoke TEST fbank, label, _ = next(iter(data_loader_val))
-        # fbank = fbank.to(device); label = label.to(device)
-        # # get the two curves
-        # saliency = attention_rollout(model, model(fbank, return_attention=True)[1])
-        # del_curve = compute_deletion(fbank, saliency, model, label, n_steps=100)  # (1, n_steps)
-        # ins_curve = compute_insertion(fbank, saliency, model, label, n_steps=100)  # (1, n_steps)
-        # # compute the “ground truth” endpoints
-        # with torch.no_grad():
-        #     orig_logits  = model(fbank)
-        #     blank       = torch.zeros_like(fbank)
-        #     blank_logits = model(blank)
-        #     class_index        = label.argmax(dim=1)[0].item()            # get the integer class
-        #     orig_conf  = torch.softmax(orig_logits,  dim=1)[0, class_index]
-        #     blank_conf = torch.softmax(blank_logits, dim=1)[0, class_index]
-        # # check deletion curve
-        # print("del_curve:", del_curve[0, 0].item(), "…", del_curve[0, -1].item())
-        # print(" expected orig_conf=", orig_conf.item(), 
-        #       " blank_conf=",   blank_conf.item())
-        # # check insertion curve
-        # print("ins_curve:", ins_curve[0, 0].item(), "…", ins_curve[0, -1].item())
-        # print(" expected blank_conf=",   blank_conf.item(), 
-        #       " orig_conf=", orig_conf.item())
-        # rand_sal = torch.rand_like(saliency)
-        # rand_del = compute_deletion(fbank, rand_sal, model, label, n_steps=100)
-        # rand_ins = compute_insertion(fbank, rand_sal, model, label, n_steps=100)
-        # print(f"RANDOM   deletion mean={rand_del.mean():.4f}  insertion mean={rand_ins.mean():.4f}")
 
         del_rollout_list = []
         ins_rollout_list = []
         del_grad_list    = []
         ins_grad_list    = []
-
         model.eval()
-        for fbank, label, _ in data_loader_val:
+        for fbank, label, _ in tqdm(data_loader_val, total=len(data_loader_val)):
             fbank = fbank.to(device) # (batch, 1, time, freq) batch is 1
             label = label.to(device)
 
             _, attention = model(fbank, return_attention=True)
 
             saliency_rollout = attention_rollout(model, attention) # -> (batch, 1, time, freq)
-            # del_curve_rollout = compute_deletion(fbank, saliency_rollout, model, label) # -> (batch, n_steps)
-            # ins_curve_rollout = compute_insertion(fbank, saliency_rollout, model, label) # -> (batch, n_steps)
-            del_scores_rollout = batch_deletion_for_image(fbank, saliency_rollout.squeeze(1), torch.tensor(data=0.3), model, label)
-            ins_scores_rollout = batch_insertion_for_image(fbank, saliency_rollout.squeeze(1), torch.tensor(data=0.3), model, label)
+            del_scores_rollout = deletion(fbank, saliency_rollout.squeeze(1), torch.tensor(data=0.02).to(device), model, label)
+            ins_scores_rollout = insertion(fbank, saliency_rollout.squeeze(1), torch.tensor(data=0.02).to(device), model, label)
 
             saliency_grad = attention_gradients(model, fbank, label) # -> (batch, 1, time, freq)
-            # del_curve_grad = compute_deletion(fbank, saliency_grad, model, label) # -> (batch, n_steps)
-            # ins_curve_grad = compute_insertion(fbank, saliency_grad, model, label) # -> (batch, n_steps)
-            del_scores_grad = batch_deletion_for_image(fbank, saliency_grad.squeeze(1), torch.tensor(data=0.3), model, label)
-            ins_scores_grad = batch_insertion_for_image(fbank, saliency_grad.squeeze(1), torch.tensor(data=0.3), model, label)
+            del_scores_grad = deletion(fbank, saliency_grad.squeeze(1), torch.tensor(data=0.02).to(device), model, label)
+            ins_scores_grad = insertion(fbank, saliency_grad.squeeze(1), torch.tensor(data=0.02).to(device), model, label)
 
-            print(del_scores_rollout)
-            print(ins_scores_rollout)
-            print(del_scores_grad)
-            print(ins_scores_grad)
+            del_rollout_list.append(del_scores_rollout.item())
+            ins_rollout_list.append(ins_scores_rollout.item())
+            del_grad_list.append(del_scores_grad.item())
+            ins_grad_list.append(ins_scores_grad.item())
 
-            raise ValueError
-
-            # del_rollout_list.append(del_curve_rollout)
-            # ins_rollout_list.append(ins_curve_rollout)
-            # del_grad_list.append(del_curve_grad)
-            # ins_grad_list.append(ins_curve_grad)
-
-        # Concatenate across all batches -> (n_samples, n_steps)
-        del_r = torch.cat(del_rollout_list, dim=0)
-        ins_r = torch.cat(ins_rollout_list, dim=0)
-        del_g = torch.cat(del_grad_list, dim=0)
-        ins_g = torch.cat(ins_grad_list, dim=0)
-
-        def curve_auc(curve_tensor):
-            c = curve_tensor.squeeze(0).cpu().numpy()
-            return float(np.trapz(c, dx=1.0) / (len(c) - 1))
-
-        del_auc = curve_auc(del_r)        # .= concatenated tensor (n_samples, n_steps+2)
-        ins_auc = curve_auc(ins_r)
-        gra_del_auc = curve_auc(del_g)
-        gra_ins_auc = curve_auc(ins_g)
-
-        # move everything to NumPy
-        del_r_np = del_r.detach().cpu().numpy()
-        ins_r_np = ins_r.detach().cpu().numpy()
-        del_g_np = del_g.detach().cpu().numpy()
-        ins_g_np = ins_g.detach().cpu().numpy()
-
-        # compute “official” deletion/insertion scores:
-        #   mean over steps for each sample, then mean over samples
-        del_rollout_score = float(del_r_np.mean(axis=1).mean())
-        ins_rollout_score = float(ins_r_np.mean(axis=1).mean())
-        del_grad_score    = float(del_g_np.mean(axis=1).mean())
-        ins_grad_score    = float(ins_g_np.mean(axis=1).mean())
+        # compute “official” deletion/insertion scores: mean over steps for each sample, then mean over samples
+        del_rollout_score = float(np.mean(del_rollout_list))
+        ins_rollout_score = float(np.mean(ins_rollout_list))
+        del_grad_score = float(np.mean(del_grad_list))
+        ins_grad_score = float(np.mean(ins_grad_list))
 
         results[name] = {
             "deletion_rollout_score": del_rollout_score,
             "insertion_rollout_score": ins_rollout_score,
             "deletion_gradients_score": del_grad_score,
             "insertion_gradients_score": ins_grad_score,
-            "del_auc":          del_auc,
-            "ins_auc":          ins_auc,
-            "grad_del_auc":     gra_del_auc,
-            "grad_ins_auc":     gra_ins_auc
         }
+        for key, value in results[name].items():
+            print(key)
+            print(value)
 
     df = pd.DataFrame(results).T
     df = df[[
