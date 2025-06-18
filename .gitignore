@@ -18,7 +18,6 @@ results/
 deletion_insertion_results/
 
 # Slurm
-scripts/
 *.out
 
 # Other system-specific or IDE files

@@ -1,0 +1,19 @@
+#!/bin/bash
+#SBATCH --account=share-ie-idi
+#SBATCH --job-name=baseline_lr1_wd1_bs2
+#SBATCH --partition=GPUQ
+#SBATCH --nodes=1
+#SBATCH --gres=gpu:a100:1
+#SBATCH --cpus-per-task=10
+#SBATCH --mem=32G
+#SBATCH --time=04:00:00
+
+source venv/bin/activate
+
+python src/main.py \
+    --mode baseline \
+    --lr 1e-5 \
+    --weight_decay 5e-4 \
+    --batch_size 32 \
+    --save_frequency 30 \
+    --sbatch_script baseline_lr1_wd1_bs2.sh
